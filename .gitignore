@@ -1,0 +1,45 @@
+# C++ / CMake 构建产物
+build-wsl/
+build/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+# Qt 构建产物
+client/release/
+client/debug/
+Makefile
+*.pro.user
+.qmake.stash
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.autosave
+
+# 客户端打包产物
+dist/
+*.zip
+
+# 服务端运行数据（数据库、blob、临时分片）
+data/
+server/data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# 测试产生的临时文件
+*.part
+test-1gb.bin
+
+# 日志与密钥
+*.log
+.env
+*.pem
+*.key
+
+# IDE / 工具目录
+.trae/
+.vscode/

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>私有网盘 · MVP 需求文档 v0.1</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --text:#1f2328; --muted:#6b7280;
+    --line:#e5e7eb; --accent:#2f6df6; --accent-soft:#eef3ff;
+    --tbd:#b45309; --tbd-bg:#fff7ed; --warn:#b42318; --warn-bg:#fef3f2;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    line-height:1.7; font-size:15px;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px}
+  header.doc{
+    background:linear-gradient(135deg,#2f6df6,#5b21b6);color:#fff;
+    border-radius:14px;padding:32px 34px;margin-bottom:28px;
+  }
+  header.doc h1{margin:0 0 8px;font-size:26px;letter-spacing:.5px}
+  header.doc .sub{opacity:.9;font-size:13px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);
+        border-radius:999px;padding:4px 12px;font-size:12px}
+  section{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:24px 28px;margin-bottom:20px;
+  }
+  h2{font-size:20px;margin:0 0 14px;padding-bottom:10px;border-bottom:2px solid var(--accent-soft)}
+  h3{font-size:16px;margin:22px 0 8px;color:#111827}
+  h4{font-size:14px;margin:16px 0 6px;color:#374151}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0 8px 22px;padding:0}
+  li{margin:4px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:#f9fafb;font-weight:600;white-space:nowrap}
+  tr:nth-child(even) td{background:#fcfcfd}
+  code{background:#f3f4f6;padding:1px 6px;border-radius:4px;font-size:13px;
+       font-family:Consolas,"Cascadia Mono",monospace}
+  .tbd{display:inline-block;background:var(--tbd-bg);color:var(--tbd);
+       border:1px solid #fed7aa;border-radius:4px;padding:0 6px;font-size:12px;font-weight:600}
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);
+           padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .callout.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .fr{display:inline-block;background:var(--accent-soft);color:var(--accent);
+      font-weight:700;border-radius:5px;padding:1px 8px;margin-right:6px;font-size:13px}
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:16px}
+  .meta div{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px}
+  .meta b{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-bottom:2px}
+  .toc{columns:2;column-gap:32px;font-size:14px}
+  .toc a{color:var(--text);text-decoration:none;border-bottom:1px dotted #cbd5e1}
+  .toc a:hover{color:var(--accent)}
+  .q{font-weight:600}
+  .done{color:#067647;font-weight:600}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:32px}
+  @media print{body{background:#fff}section{break-inside:avoid;border:none;padding:0 0 12px}
+    header.doc{background:#2f6df6 !important;-webkit-print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>多用户网盘 · MVP 需求文档</h1>
+  <div class="sub">多账户 · Windows 客户端（Qt 5.12）+ 阿里云服务器 · 面向自己与朋友的公网网盘，兼作秋招作品</div>
+  <div class="chips">
+    <span class="chip">版本 v0.3（需求已确认）</span>
+    <span class="chip">日期 2026-11-03</span>
+    <span class="chip">范围：骨架 + 多用户 + 在线预览</span>
+    <span class="chip">部署目标：阿里云公网</span>
+  </div>
+</div>
+
+<section>
+  <h2>0. 阅读说明</h2>
+  <p>本文只定义<strong>产品行为</strong>：用户能做什么、在什么条件下做、结果是什么、出错怎么办。不涉及接口、数据库、代码结构（那些在开发阶段单独定）。</p>
+  <p>标记约定：<span class="tbd">TBD</span> 表示尚未决定、需要你拍板的事项，汇总在第 6 节；<span class="fr">FR-xx</span> 是功能编号，后续开发与验收都按编号对齐。</p>
+  <div class="meta">
+    <div><b>产品定位</b>小规模多用户网盘</div>
+    <div><b>用户规模</b>多账户（自己 + 朋友），每人独立空间</div>
+    <div><b>核心价值</b>文件存自己的服务器，公网随时取回</div>
+    <div><b>附加价值</b>完整可讲的项目（客户端 + 服务端 + 部署 + 多用户）</div>
+  </div>
+</section>
+
+<section>
+  <h2>1. 背景与目标</h2>
+  <h3>1.1 背景</h3>
+  <p>文件分散在本地电脑、移动硬盘和聊天工具里，缺少一处"随时能取回"的位置；同时已有一台阿里云服务器长期闲置。</p>
+  <p>产品从"只给自己用"调整为"部署到公网、可以给朋友一起用"：服务器、域名和带宽的钱已经花了，多账户带来的增量成本有限，却能让系统更完整。</p>
+  <p>做这个产品有两层动机：<strong>实用</strong>——把自己的文件集中到一个自己可控的地方，并让朋友也能用；<strong>作品</strong>——它是一个覆盖客户端、服务端、部署、公网访问的完整项目，适合作为秋招简历与面试讲解的载体。</p>
+  <div class="callout">
+    <strong>由此产生的一个约束：</strong>这个项目要"讲得清"。凡是自己说不明白原理的功能，宁可不做，也不要把别人的代码贴进来当自己的。文档里的每条规则，最终都应该能对应到一段你能解释的代码。
+  </div>
+
+  <h3>1.2 目标（按可见结果描述）</h3>
+  <table>
+    <tr><th>编号</th><th>目标</th><th>可观察的完成标志</th></tr>
+    <tr><td>G1</td><td>能登录并看到服务器上的目录内容</td><td>登录后主界面列出根目录下的文件与文件夹；进入子目录能看到对应内容</td></tr>
+    <tr><td>G2</td><td>能把本地文件上传到服务器，大文件也不例外</td><td>上传完成后列表中出现的文件大小与原文件一致；实际下载回来字节完全相同</td></tr>
+    <tr><td>G3</td><td>上传/下载中断后可以继续，而不是从头再来</td><td>断网或关闭客户端后重新打开，任务仍可"继续"，且只补传缺失部分</td></tr>
+    <tr><td>G4</td><td>同一个文件重复上传不重复占用空间</td><td>第二次上传同一文件时任务显示"秒传"，瞬间完成</td></tr>
+    <tr><td>G5</td><td>不用下载就能看图片和文本内容</td><td>双击图片/文本文件，客户端内直接显示内容</td></tr>
+    <tr><td>G6</td><td>误删的文件可以找回</td><td>删除后文件出现在回收站，可恢复到原目录</td></tr>
+    <tr><td>G7</td><td>多个账户互不干扰</td><td>用自己的账号登录只看到自己的文件；换个账号登录看不到前一个账号的任何内容</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>2. 范围</h2>
+  <h3>2.1 核心用户旅程</h3>
+  <table>
+    <tr><th>环节</th><th>内容</th></tr>
+    <tr><td>入口</td><td>打开客户端 → 填写服务器地址 → 注册或登录（首次使用先注册）</td></tr>
+    <tr><td>主路径</td><td>浏览目录 → 上传文件（大文件自动分片）→ 列表中出现该文件 → 双击预览 → 需要时下载回本地 → 删除进回收站</td></tr>
+    <tr><td>完成证据</td><td>文件出现在远程列表且大小正确；下载回来的文件与原文件字节一致；预览能显示内容；回收站里能恢复</td></tr>
+    <tr><td>失败恢复</td><td>传输中断 → 任务变为"已暂停" → 重新登录后点"继续" → 只补传缺失分片</td></tr>
+  </table>
+
+  <h3>2.2 本期必做（P0）</h3>
+  <table>
+    <tr><th>编号</th><th>功能</th><th>为什么必须在第一期</th></tr>
+    <tr><td>FR-00</td><td>注册</td><td>多用户的前提；没有注册就只能手工开号</td></tr>
+    <tr><td>FR-01</td><td>登录</td><td>区分账户身份；所有文件操作都以登录账户为边界</td></tr>
+    <tr><td>FR-02</td><td>目录浏览</td><td>网盘的"结构"就是目录树，其余功能都挂在它上面</td></tr>
+    <tr><td>FR-03</td><td>新建文件夹</td><td>没有它，文件只能堆在根目录，无法组织</td></tr>
+    <tr><td>FR-04</td><td>重命名</td><td>最基础的整理动作，成本极低</td></tr>
+    <tr><td>FR-05</td><td>删除与回收站</td><td>防误删是真实需求；软删除的实现成本很低</td></tr>
+    <tr><td>FR-06</td><td>上传（分片）</td><td>核心能力，也是最能讲的技术点</td></tr>
+    <tr><td>FR-07</td><td>断点续传</td><td>没有它，大文件一断网就白传，体验直接崩</td></tr>
+    <tr><td>FR-08</td><td>秒传</td><td>与分片共用一套机制，顺带做出"网盘感"</td></tr>
+    <tr><td>FR-09</td><td>下载（断点续传）</td><td>上传的对称面，不做就等于存进去拿不回来</td></tr>
+    <tr><td>FR-10</td><td>传输队列</td><td>多文件、大文件场景下必须能看到进度与暂停</td></tr>
+    <tr><td>FR-11</td><td>在线预览（图片 / 文本）</td><td>你明确要求本期做；限制在两类以实现成本可控</td></tr>
+  </table>
+
+  <h3>2.3 本期不做（并说明为什么现在不做）</h3>
+  <table>
+    <tr><th>不做</th><th>原因</th></tr>
+    <tr><td>管理员后台、审计日志、角色权限（管理员/只读等）</td><td>多账户已进本期，但"后台管理"是另一套系统；本期用固定配额 + 直接改数据库即可</td></tr>
+    <tr><td>分享链接、Web 端、手机端</td><td>你已明确不做 Web；分享是独立功能，可在骨架之上追加</td></tr>
+    <tr><td>HTTPS</td><td>本期先用 HTTP，风险已在第 6 节记录；正式公网长期使用前必须补</td></tr>
+    <tr><td>本地文件夹自动同步（双向）</td><td>需要文件监听、冲突解决、增量对比，是网盘最难的部分，成本数倍于本期全部内容</td></tr>
+    <tr><td>多节点 / 分布式存储</td><td>单机就能满足本期规模；分布式是另一个量级的工程，宁可后续接现成对象存储也不手写</td></tr>
+    <tr><td>版本历史</td><td>需要保留多份内容与清理策略，与"回收站"一起做会更复杂</td></tr>
+    <tr><td>视频 / Office / PDF 预览</td><td>需要转码或专用渲染，先只做图片与文本</td></tr>
+    <tr><td>批量打包下载</td><td>需要服务端打包，属于独立功能；单文件下载已够用</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>3. 产品模型</h2>
+  <h3>3.1 对象</h3>
+  <table>
+    <tr><th>对象</th><th>定义</th><th>用户可见的关键信息</th></tr>
+    <tr><td>账户</td><td>一个注册用户，拥有独立的文件空间与配额</td><td>用户名、登录状态、已用空间 / 配额</td></tr>
+    <tr><td>文件</td><td>一个带名称的节点，属于某个账户下的某个目录</td><td>名称、大小、修改时间、类型</td></tr>
+    <tr><td>文件夹</td><td>可以包含文件与文件夹的节点，同样归属于某个账户</td><td>名称、修改时间</td></tr>
+    <tr><td>文件内容</td><td>文件的实际数据。相同内容只保存一份，多个文件条目可共用</td><td>不可见（用户只看到文件条目）</td></tr>
+    <tr><td>传输任务</td><td>一次上传或下载的执行记录</td><td>方向、大小、进度、速度、剩余时间、状态</td></tr>
+    <tr><td>回收站条目</td><td>被删除但尚未彻底清除的文件或文件夹</td><td>名称、删除时间、原所在目录</td></tr>
+  </table>
+
+  <h3>3.2 状态</h3>
+  <h4>传输任务</h4>
+  <table>
+    <tr><th>状态</th><th>含义</th><th>可执行操作</th><th>可流转到</th></tr>
+    <tr><td>等待中</td><td>已创建，尚未开始传数据</td><td>取消</td><td>进行中 / 已取消</td></tr>
+    <tr><td>进行中</td><td>正在上传或下载</td><td>暂停、取消</td><td>已暂停 / 已完成 / 失败 / 已取消</td></tr>
+    <tr><td>已暂停</td><td>用户暂停或网络中断后自动暂停，已传部分保留</td><td>继续、取消</td><td>进行中 / 已取消</td></tr>
+    <tr><td>校验中</td><td>数据已传完，正在确认内容完整</td><td>取消</td><td>已完成 / 失败</td></tr>
+    <tr><td>已完成</td><td>成功结束</td><td>清空记录、打开所在位置</td><td>—</td></tr>
+    <tr><td>失败</td><td>校验不通过、服务器错误、磁盘不足等</td><td>重试、删除记录</td><td>进行中（重试）</td></tr>
+    <tr><td>已取消</td><td>用户主动取消，已传部分立即清理</td><td>重新开始</td><td>等待中</td></tr>
+  </table>
+  <h4>文件</h4>
+  <table>
+    <tr><th>状态</th><th>可见位置</th><th>可执行操作</th></tr>
+    <tr><td>正常</td><td>所在目录</td><td>预览、下载、重命名、删除（目录间移动不在本期）</td></tr>
+    <tr><td>回收站</td><td>回收站</td><td>恢复、彻底删除</td></tr>
+    <tr><td>已彻底删除</td><td>不可见</td><td>无（不可恢复）</td></tr>
+  </table>
+
+  <h3>3.3 共享规则（全篇只在这里定义一次）</h3>
+  <table>
+    <tr><th>编号</th><th>规则</th></th></tr>
+    <tr><td>R0 账户隔离</td><td>每个账户只能看到、只能操作自己的文件与回收站。所有列表与文件操作都以当前登录账户为边界；越权访问按"文件不存在"处理，不透露它是否存在。</td></tr>
+    <tr><td>R1 内容去重</td><td>相同内容在服务器上只保存一份，但每个账户的文件条目互相独立。删除一个条目只影响该条目本身，不会让其他账户的文件失效；去重不改变可见性与访问边界（见 R0、R10）。</td></tr>
+    <tr><td>R2 重名处理</td><td>同一目录下不允许同名。上传、新建、重命名、恢复到原目录时遇到重名，自动在名称后追加 <code> (1)</code>、<code> (2)</code>…</td></tr>
+    <tr><td>R3 回收站保留</td><td>保留 30 天，超期自动彻底删除；清空回收站不可恢复。</td></tr>
+    <tr><td>R4 分片与上限</td><td>单文件上限 10 GB；分片 4 MiB；上传会话在服务端保留 7 天，超期后任务必须从头开始。</td></tr>
+    <tr><td>R5 预览不落盘</td><td>预览直接读取远程内容，不要求用户先下载；产生的本地临时数据在预览关闭后清理。</td></tr>
+    <tr><td>R6 时间显示</td><td>列表中的时间按客户端本地时区显示，精确到分钟。</td></tr>
+    <tr><td>R7 命名校验</td><td>名称长度 1~255 字符，禁止 <code>/ \ : * ? " &lt; &gt; |</code> 与首尾空格；空名称与纯空格被拒绝。</td></tr>
+    <tr><td>R8 删除确认</td><td>删除到回收站不需要二次确认（可恢复）；彻底删除与清空回收站必须二次确认。</td></tr>
+    <tr><td>R9 空间配额</td><td>每个账户默认 5 GB；超出后上传被拒绝并提示"空间不足"；回收站中的文件计入已用空间，直到彻底删除。</td></tr>
+    <tr><td>R10 秒传范围</td><td>秒传只在"该账户已拥有同内容文件"时成立，不允许通过内容校验值把其他账户的文件变成自己的条目。</td></tr>
+    <tr><td>R11 登录会话</td><td>登录成功后获得访问凭证，有效期 7 天；过期后需重新登录。同一账户允许在多台设备同时登录。</td></tr></table>
+</section>
+
+<section>
+  <h2>4. 功能需求</h2>
+
+  <h3><span class="fr">FR-00</span>注册</h3>
+  <p><strong>目的：</strong>让新用户能自己创建账户，而不是由你手工开号。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>登录界面点击"注册"；未登录状态下可见</td></tr>
+    <tr><td>输入</td><td>服务器地址、用户名、密码</td></tr>
+    <tr><td>规则</td><td>用户名 3~20 位，仅字母数字下划线，全局唯一；密码 6~64 位；用户名已存在 → 提示"该用户名已被使用"</td></tr>
+    <tr><td>结果</td><td>注册成功 → 自动登录并进入主界面，根目录为空</td></tr>
+    <tr><td>异常</td><td>服务器不可达 → 提示无法连接；用户名已被占用 → 提示"该用户名已被使用"；重复提交 → 只创建一次账户</td></tr>
+    <tr><td>配额初值</td><td>新账户已用空间为 0，配额按 R9 赋默认值</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-01</span>登录</h3>
+  <p><strong>目的：</strong>识别当前使用者是谁，让所有文件操作都有明确的归属，避免服务器被匿名访问。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>客户端启动且未登录；或主动点击"切换账号"</td></tr>
+    <tr><td>输入</td><td>服务器地址（默认 <code>http://127.0.0.1:8080</code>）、账号、密码</td></tr>
+    <tr><td>规则</td><td>地址与账号在下次启动时回填；密码不持久化</td></tr>
+    <tr><td>结果</td><td>登录成功 → 进入主界面并加载根目录</td></tr>
+    <tr><td>异常</td><td>账号或密码错误 → 统一提示"账号或密码错误"（不区分哪一项错）；服务器不可达 → "无法连接服务器，请检查地址"；10 秒无响应按超时处理；连续失败不锁定</td></tr>
+    <tr><td>退出</td><td>主界面"退出登录" → 回到登录界面并清除本地访问凭证；未完成的传输任务保留</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-02</span>目录浏览</h3>
+  <p><strong>目的：</strong>让用户看到服务器上有什么，并能进出各级目录。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>登录成功后自动加载根目录；点击文件夹、面包屑、返回；点击"刷新"</td></tr>
+    <tr><td>展示</td><td>列表列：名称、大小（文件夹显示"—"）、修改时间、类型；文件夹排在文件前面；只显示当前账户拥有的条目</td></tr>
+    <tr><td>排序</td><td>默认按名称升序；支持点列头切换</td></tr>
+    <tr><td>结果</td><td>双击文件夹进入；双击文件触发预览；面包屑显示当前路径</td></tr>
+    <tr><td>异常</td><td>空目录 → 显示"这个文件夹还是空的"；加载失败 → 显示错误信息与"重试"；目录已被删除 → 提示并回到根目录</td></tr>
+    <tr><td>刷新</td><td>上传/删除/重命名完成后局部刷新，保持当前路径与选中项（若仍存在）</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-03</span>新建文件夹</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>工具栏"新建文件夹"或列表右键菜单</td></tr>
+    <tr><td>输入</td><td>名称，遵循 R7</td></tr>
+    <tr><td>规则</td><td>重名按 R2 自动追加序号；名称为空或非法 → 输入框标红并提示，不发起请求</td></tr>
+    <tr><td>结果</td><td>新文件夹出现在当前目录并选中</td></tr>
+    <tr><td>异常</td><td>服务端失败 → 提示原因，输入框内容保留以便重试</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-04</span>重命名</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>选中单个条目后按 F2 / 右键"重命名"</td></tr>
+    <tr><td>规则</td><td>遵循 R7 与 R2；只允许单个条目，多选时该操作不可用</td></tr>
+    <tr><td>结果</td><td>列表中原位置更新名称；当前位置与选中状态不变</td></tr>
+    <tr><td>异常</td><td>名称未变化 → 不发请求；目标已存在 → 自动追加序号（按 R2）</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-05</span>删除与回收站</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>选中一个或多个条目后删除；回收站中"恢复"或"彻底删除"</td></tr>
+    <tr><td>规则</td><td>删除 = 移入回收站（R8，不二次确认）；删除文件夹时其内部内容一并进回收站；恢复时原目录已不存在则恢复到根目录，重名按 R2；彻底删除需二次确认（R8）</td></tr>
+    <tr><td>结果</td><td>条目从当前目录消失；回收站中可看到并可恢复；恢复后回到原目录原名称（或按 R2 改名）</td></tr>
+    <tr><td>异常</td><td>条目已不存在 → 提示"文件已被删除"并刷新列表</td></tr>
+    <tr><td>容量</td><td>回收站中的文件计入已用空间，直到彻底删除（见 R9）</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-06</span>上传</h3>
+  <p><strong>目的：</strong>把本地文件存到服务器，任意大小都能成功。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>工具栏"上传"、拖拽文件到列表、右键菜单；支持一次选多个文件；支持选择一个文件夹，按原有目录结构递归上传</td></tr>
+    <tr><td>流程</td><td>① 客户端计算文件的内容校验值（带进度，不阻塞界面）→ ② 向服务器发起上传，若同内容已存在则<strong>秒传</strong>（FR-08）→ ③ 否则按分片顺序上传 → ④ 服务端拼接并校验 → ⑤ 生成文件条目</td></tr>
+    <tr><td>结果</td><td>列表出现该文件；任务状态变为"已完成"；大小与原文件一致</td></tr>
+    <tr><td>异常</td><td>网络中断 → 任务自动转"已暂停"，可继续（FR-07）；内容校验不通过 → 任务"失败"，提示"文件可能在传输中损坏，请重新上传"；超出配额 → 失败并提示"空间不足"；同名 → 按 R2 自动改名</td></tr>
+    <tr><td>界面反馈</td><td>进度、速度、剩余时间；秒传时显示"秒传完成"</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-07</span>断点续传</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>任务处于"已暂停"（用户手动暂停或网络中断自动暂停），用户点"继续"</td></tr>
+    <tr><td>规则</td><td>服务端记录本次上传已收到哪些分片；继续时只补传缺失分片；已完成的分片不重复上传</td></tr>
+    <tr><td>结果</td><td>进度从已上传的位置接着走，不归零</td></tr>
+    <tr><td>异常</td><td>上传会话已过期（R4）→ 提示"上传会话已失效，将重新开始"，进度归零重传；分片在服务端丢失 → 该分片重传</td></tr>
+    <tr><td>跨会话</td><td>关闭客户端后未完成任务保留在传输列表；重新打开并登录后可继续</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-08</span>秒传</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>上传流程第②步：服务端发现已有相同内容的文件</td></tr>
+    <tr><td>规则</td><td>不传输文件数据，仅创建新的文件条目（可以放在其他目录，也可以使用其他名称）</td></tr>
+    <tr><td>结果</td><td>任务立即变为"已完成"，并标记"秒传"</td></tr>
+    <tr><td>边界</td><td>秒传只影响"传不传数据"，不影响条目数量与用户可见的文件名；删除其中一个条目不影响其他条目（R1）</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-09</span>下载</h3>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>选中文件后点击"下载"；选择保存位置（默认上次使用的目录，首次为系统"下载"文件夹）</td></tr>
+    <tr><td>规则</td><td>支持断点续传；暂停后继续只补缺失部分；下载中可取消</td></tr>
+    <tr><td>结果</td><td>完成后本地文件可正常打开；文件名默认为远程名称，重名按 R2</td></tr>
+    <tr><td>异常</td><td>文件已被删除 → 提示并刷新；磁盘空间不足 → 失败并提示；取消后删除未完成的临时文件</td></tr>
+    <tr><td>暂不支持</td><td>文件夹整体下载、多选批量下载（见 2.3）</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-10</span>传输队列</h3>
+  <p><strong>目的：</strong>让用户随时知道"在传什么、传了多少、还要多久"，并能控制它。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>展示</td><td>每个任务一行：文件名、方向（上传/下载）、总大小、进度、速度、剩余时间、状态</td></tr>
+    <tr><td>操作</td><td>暂停、继续、取消、重试、清空已完成记录、打开所在位置</td></tr>
+    <tr><td>并发</td><td>同时进行的任务数上限 3；超出部分排队为"等待中"</td></tr>
+    <tr><td>规则</td><td>暂停保留已传数据；失败自动重试 3 次，仍失败才置为"失败"；取消为终态，需重新创建任务</td></tr>
+    <tr><td>持久化</td><td>未完成任务在关闭客户端后保留，重新打开可见并可继续；已完成记录仅在本次会话内保留，重启后清空</td></tr>
+  </table>
+
+  <h3><span class="fr">FR-11</span>在线预览</h3>
+  <p><strong>目的：</strong>不下载就能确认内容，省时省空间。</p>
+  <table>
+    <tr><th>项</th><th>定义</th></tr>
+    <tr><td>触发</td><td>双击文件，或右键"预览"；仅对文件生效，文件夹双击为进入</td></tr>
+    <tr><td>支持类型</td><td>图片：png、jpg、jpeg、gif、bmp、webp；文本：txt、md、log、json、xml、csv、cpp、h。PDF 本期不做</td></tr>
+    <tr><td>文本规则</td><td>只读展示，等宽字体；超过 1 MB 时截断并提示"文件过大，仅显示前 1 MB"</td></tr>
+    <tr><td>图片规则</td><td>适应窗口显示，滚轮缩放；不支持的格式提示"暂不支持预览，请下载后查看"</td></tr>
+    <tr><td>展示位置</td><td>主界面右侧预览面板</td></tr>
+    <tr><td>异常</td><td>加载中显示占位与进度；文件已被删除 → 提示并刷新；加载失败 → 可重试</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. 界面（登录/主界面已确认，局部界面待定）</h2>
+  <div class="callout">
+    <strong>登录窗与主界面已确认。</strong>按 Q1–Q4 的结论：左侧目录树 + 右侧文件列表、独立登录页、底部传输摘要 + 传输列表、右侧预览面板。登录窗与主界面的颜色、尺寸、布局已于 2026-11-04 通过可点草图确认，实现契约写在 <code>docs/plans/2026-11-04-netdisk-mvp/phase-2-qt-client-login.md</code>，草图在 <code>docs/ui-mockups/phase-2-ui-sketch.html</code>。上传摘要、预览面板、传输面板、回收站仍待各自开工前出草图确认，不擅自定稿。
+  </div>
+  <table>
+    <tr><th>界面</th><th>必须包含的内容</th><th>状态</th></tr>
+    <tr><td>登录 / 注册界面</td><td>服务器地址、账号、密码、登录 / 注册切换、错误提示区</td><td><span class="fr">已确认（阶段 2）</span></td></tr>
+    <tr><td>主界面</td><td>当前路径导航、文件列表（名称/大小/时间/类型）、上传/新建文件夹/删除/下载入口、当前账户与已用空间、传输任务区域</td><td><span class="fr">布局已确认（阶段 2）；传输区域细化待阶段 5</span></td></tr>
+    <tr><td>预览界面</td><td>内容展示区、文件名与大小、关闭/缩放、加载与错误提示</td><td><span class="tbd">右侧面板已定，草图待阶段 4 开工前确认</span></td></tr>
+    <tr><td>回收站</td><td>条目列表、恢复、彻底删除、清空</td><td><span class="tbd">独立对话框，草图待阶段 5 开工前确认</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>6. 决策记录</h2>
+  <p><strong>Q1–Q12、M1–M4 已全部确认</strong>，下表保留为决策记录，开发阶段不再改动这些结论；后续若要改，走"变更记录"。</p>
+  <table>
+    <tr><th>#</th><th>问题</th><th>影响</th><th>我的建议</th></tr>
+    <tr><td>Q1</td><td>主界面布局：左侧目录树 + 右侧文件列表，还是单栏文件列表（靠面包屑导航）？</td><td>整体布局，改动成本最高，越早定越好</td><td>左侧目录树 + 右侧列表，最像网盘，也最能体现数据结构</td></tr>
+    <tr><td>Q2</td><td>登录：独立启动窗口，还是主界面顶部的登录栏？</td><td>启动流程与首屏体验</td><td>独立登录页，登录成功后进入主界面</td></tr>
+    <tr><td>Q3</td><td>传输进度放在哪：主界面底部状态栏摘要 + 独立"传输列表"页签，还是直接在文件列表里显示进度条？</td><td>信息密度与实现复杂度</td><td>底部摘要 + 可展开的传输列表</td></tr>
+    <tr><td>Q4</td><td>预览是独立窗口，还是主界面右侧面板？</td><td>是否要重构布局</td><td>右侧面板（像网盘），但随着列表变窄需要适配</td></tr>
+    <tr><td>Q5</td><td>上传入口要哪些：按钮、拖拽、右键？</td><td>交互实现量</td><td>三者都要，拖拽体验最好</td></tr>
+    <tr><td>Q6</td><td>要不要文件夹上传（选一个文件夹递归上传）？</td><td>会增加 P0 工作量，但简历上多一个点</td><td>建议做，成本中等</td></tr>
+    <tr><td>Q7</td><td>文件名重名时自动加 <code> (1)</code>，还是弹窗问"覆盖/两者都留"？</td><td>影响上传、下载、恢复等多处</td><td>自动加序号，不打断流程</td></tr>
+    <tr><td>Q8</td><td>回收站保留多久？是否需要"清空回收站"？</td><td>涉及定时清理</td><td>保留 30 天 + 手动清空</td></tr>
+    <tr><td>Q9</td><td>单文件大小上限、分片大小、并发任务数？</td><td>性能与内存占用</td><td>上限 10 GB、分片 4 MB、并发 3</td></tr>
+    <tr><td>Q10</td><td>文本预览上限 1 MB 是否够？要不要支持 PDF？</td><td>预览模块范围</td><td>文本 1 MB；PDF 先不做</td></tr>
+    <tr><td>Q11</td><td>服务器地址写在登录页，还是放到设置页/配置文件？</td><td>换服务器是否要重新登录</td><td>写登录页，同时记住上次的值</td></tr>
+    <tr><td>Q12</td><td>简历上你最想突出哪个技术点：分片上传与断点续传、内容去重（秒传）、并发传输、还是服务端部署？</td><td>决定我们把哪块做深、写细</td><td>主推"分片 + 断点续传"，其余作为支撑</td></tr>
+  </table>
+
+  <h3>多用户相关决策（已确认）</h3>
+  <table>
+    <tr><th>#</th><th>决策</th><th>说明</th></tr>
+    <tr><td>M1</td><td>开放注册</td><td>任何人都可注册，本期不做邀请码。已知风险：可能被陌生人或爬虫注册，占用磁盘与带宽。</td></tr>
+    <tr><td>M2</td><td>每账户 5 GB</td><td>回收站占用计入配额；个别账户需要时单独调大。</td></tr>
+    <tr><td>M3</td><td>本期使用 HTTP，不启用 HTTPS</td><td>已知风险：账号、密码、文件内容在公网传输时为明文。仅限小范围可信使用，正式长期使用前必须补 HTTPS。</td></tr>
+    <tr><td>M4</td><td>客户端以"免安装文件夹"分发</td><td>用 windeployqt 收集依赖 DLL，压缩后发下载链接，朋友解压即用。</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>已接受的风险，请记住：</strong>HTTP 是明文传输，同一网络里的人可以截获密码和文件内容。本期你选择先不上 HTTPS，可以接受；但只要服务端放到公网、能被别人访问，就应该尽快补上（买域名 + 免费证书，改动量很小）。这不是功能，是上线前的安全底线。
+  </div>
+</section>
+
+<section>
+  <h2>7. 术语</h2>
+  <table>
+    <tr><th>术语</th><th>含义</th></tr>
+    <tr><td>分片</td><td>把一个大文件切成固定大小的块，逐块传输</td></tr>
+    <tr><td>断点续传</td><td>传输中断后，从已完成的进度继续，而不是从头开始</td></tr>
+    <tr><td>秒传</td><td>服务器已有相同内容的文件，新文件不再传输数据，直接生成条目</td></tr>
+    <tr><td>内容校验值</td><td>由文件内容算出的定长字符串，内容相同则值相同，用于判断"是不是同一个文件"</td></tr>
+    <tr><td>回收站</td><td>删除后的暂存区，条目仍占用存储，可恢复</td></tr>
+    <tr><td>P0</td><td>本期必须完成，缺一项核心旅程就不完整</td></tr>
+  </table>
+</section>
+
+<footer>多用户网盘 MVP · 需求文档 v0.3 · 需求已确认，进入接口设计与界面草图阶段</footer>
+
+</div>
+</body>
+</html>

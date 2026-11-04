@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网盘客户端 · 界面草图（阶段 2）</title>
+<style>
+  :root{
+    --primary:#2D8CF0;
+    --primary-hover:#1E6FD9;
+    --primary-active:#1A5FB4;
+    --primary-disabled:#A0CFFF;
+    --text:#1F2329;
+    --text-muted:#86909C;
+    --text-faint:#C9CDD4;
+    --border:#D9D9D9;
+    --border-light:#EBEDF0;
+    --bg-page:#F2F4F7;
+    --error-text:#E64545;
+    --error-bg:#FFF1F0;
+    --brand-from:#F5F8FF;
+    --brand-to:#EAF2FF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    background:var(--bg-page);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    padding:28px 16px 56px;
+  }
+
+  /* ---------- 演示页顶部工具条 ---------- */
+  .demo-bar{
+    display:flex;align-items:center;gap:12px;
+    margin-bottom:20px;flex-wrap:wrap;justify-content:center;
+  }
+  .demo-bar h1{
+    font-size:15px;font-weight:600;margin:0 14px 0 0;color:var(--text);
+  }
+  .demo-bar .hint{font-size:12px;color:var(--text-muted);}
+  .demo-tab{
+    border:1px solid var(--border);background:#fff;color:var(--text-muted);
+    font-size:13px;padding:6px 14px;border-radius:6px;cursor:pointer;
+    font-family:inherit;
+  }
+  .demo-tab.on{border-color:var(--primary);color:var(--primary);background:#F0F7FF;}
+  .demo-tab:hover{border-color:var(--primary);}
+
+  /* ---------- 通用 ---------- */
+  .screen{display:none;}
+  .screen.on{display:block;}
+
+  .dialog{
+    width:760px;height:440px;background:#fff;border-radius:8px;
+    box-shadow:0 8px 28px rgba(31,35,41,.14),0 2px 6px rgba(31,35,41,.06);
+    display:flex;overflow:hidden;position:relative;
+  }
+
+  /* ---------- 左侧品牌区 ---------- */
+  .brand{
+    width:320px;flex:0 0 320px;
+    background:linear-gradient(180deg,var(--brand-from) 0%,var(--brand-to) 100%);
+    padding:52px 36px 32px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .brand .blob{position:absolute;border-radius:50%;background:rgba(45,140,240,.07);}
+  .brand .b1{width:220px;height:220px;right:-70px;top:-60px;}
+  .brand .b2{width:140px;height:140px;right:-30px;top:120px;background:rgba(45,140,240,.05);}
+  .brand .logo-mark{
+    width:44px;height:44px;border-radius:10px;background:var(--primary);
+    display:flex;align-items:center;justify-content:center;margin-bottom:18px;
+    box-shadow:0 4px 10px rgba(45,140,240,.28);
+  }
+  .brand .logo-mark span{
+    width:20px;height:16px;border:2px solid #fff;border-radius:3px 3px 5px 5px;
+    position:relative;display:block;
+  }
+  .brand .logo-mark span::before{
+    content:"";position:absolute;left:2px;right:2px;top:-7px;height:6px;
+    border:2px solid #fff;border-bottom:none;border-radius:3px 3px 0 0;
+  }
+  .brand h2{font-size:28px;font-weight:600;margin:0 0 10px;letter-spacing:.5px;}
+  .brand p{font-size:13px;color:var(--text-muted);margin:0;line-height:1.7;}
+  .brand .feats{margin-top:auto;font-size:12px;color:var(--text-muted);line-height:2;}
+  .brand .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--primary);margin-right:8px;vertical-align:1px;}
+
+  /* ---------- 右侧表单区 ---------- */
+  .form-side{
+    width:440px;flex:1;padding:34px 40px 0;display:flex;flex-direction:column;
+    position:relative;
+  }
+  .tabs{display:flex;height:44px;align-items:flex-start;gap:28px;}
+  .tab{
+    font-size:15px;padding:0 0 12px;border:none;background:none;cursor:pointer;
+    font-family:inherit;color:var(--text-muted);position:relative;
+  }
+  .tab.on{color:var(--text);font-weight:600;}
+  .tab.on::after{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--primary);
+    border-radius:2px;
+  }
+  .tab:disabled{color:var(--text-faint);cursor:not-allowed;}
+
+  form{margin-top:26px;display:flex;flex-direction:column;}
+  .field{margin-bottom:16px;position:relative;}
+  .field label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;}
+  .input{
+    width:360px;height:40px;border:1px solid var(--border);border-radius:4px;
+    padding:0 12px;font-size:14px;font-family:inherit;color:var(--text);
+    outline:none;transition:border-color .15s,box-shadow .15s;background:#fff;
+  }
+  .input::placeholder{color:var(--text-faint);}
+  .input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(45,140,240,.12);}
+  .input.has-eye{padding-right:56px;}
+  .eye{
+    position:absolute;right:8px;top:26px;height:32px;border:none;background:none;
+    color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit;padding:0 6px;
+    border-radius:4px;
+  }
+  .eye:hover{color:var(--primary);background:#F0F7FF;}
+
+  /* 错误条固定占位，避免按钮跳动 */
+  .error-slot{height:32px;margin-bottom:14px;}
+  .error-bar{
+    height:32px;line-height:32px;background:var(--error-bg);color:var(--error-text);
+    font-size:12px;border-radius:4px;padding:0 12px;display:none;
+    align-items:center;gap:6px;
+  }
+  .error-bar.show{display:flex;}
+  .error-bar .x{font-size:14px;line-height:1;}
+
+  .submit{
+    width:360px;height:40px;border:none;border-radius:4px;background:var(--primary);
+    color:#fff;font-size:15px;font-family:inherit;cursor:pointer;letter-spacing:2px;
+    transition:background .15s;
+  }
+  .submit:hover{background:var(--primary-hover);}
+  .submit:active{background:var(--primary-active);}
+  .submit:disabled{background:var(--primary-disabled);cursor:default;}
+
+  .form-foot{
+    margin-top:18px;display:flex;justify-content:space-between;align-items:center;width:360px;
+  }
+  .link{
+    border:none;background:none;font-family:inherit;font-size:13px;cursor:pointer;padding:0;
+  }
+  .link.blue{color:var(--primary);}
+  .link.blue:hover{text-decoration:underline;}
+  .link.gray{color:var(--text-muted);}
+  .link.gray:hover{color:var(--text);}
+
+  .tip{
+    position:absolute;left:40px;bottom:18px;font-size:11px;color:var(--text-faint);
+  }
+
+  /* ---------- 服务器设置小弹窗 ---------- */
+  .mask{
+    position:fixed;inset:0;background:rgba(31,35,41,.35);display:none;
+    align-items:center;justify-content:center;z-index:20;
+  }
+  .mask.on{display:flex;}
+  .mini{
+    width:380px;background:#fff;border-radius:8px;padding:22px 24px 18px;
+    box-shadow:0 12px 32px rgba(31,35,41,.2);
+  }
+  .mini h3{font-size:15px;margin:0 0 6px;}
+  .mini p{font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.6;}
+  .mini .input{width:100%;}
+  .mini .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+  .btn-ghost{
+    height:32px;padding:0 16px;border:1px solid var(--border);background:#fff;
+    border-radius:4px;font-family:inherit;font-size:13px;cursor:pointer;color:var(--text);
+  }
+  .btn-ghost:hover{border-color:var(--primary);color:var(--primary);}
+  .btn-solid{
+    height:32px;padding:0 18px;border:none;background:var(--primary);color:#fff;
+    border-radius:4px;font-family:inherit;font-size:13px;cursor:pointer;
+  }
+  .btn-solid:hover{background:var(--primary-hover);}
+
+  /* ---------- 主窗口 ---------- */
+  .mainwin{
+    width:1100px;height:700px;background:#fff;border-radius:8px;overflow:hidden;
+    box-shadow:0 8px 28px rgba(31,35,41,.14),0 2px 6px rgba(31,35,41,.06);
+    display:flex;flex-direction:column;
+  }
+  .toolbar{
+    height:48px;flex:0 0 48px;border-bottom:1px solid var(--border-light);
+    display:flex;align-items:center;gap:8px;padding:0 16px;
+  }
+  .tool{
+    height:30px;padding:0 14px;border:1px solid var(--border);background:#fff;
+    border-radius:4px;font-family:inherit;font-size:13px;color:var(--text);cursor:pointer;
+  }
+  .tool:hover{border-color:var(--primary);color:var(--primary);}
+  .tool:disabled{color:var(--text-faint);border-color:var(--border-light);cursor:not-allowed;background:#FAFBFC;}
+  .tool.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .tool.primary:hover{background:var(--primary-hover);}
+  .toolbar .spacer{flex:1;}
+  .user{font-size:13px;color:var(--text-muted);margin-right:8px;}
+
+  .workspace{flex:1;display:flex;min-height:0;}
+  .tree{
+    width:240px;flex:0 0 240px;border-right:1px solid var(--border-light);
+    padding:12px 0;background:#FCFCFD;
+  }
+  .tree-item{
+    height:34px;display:flex;align-items:center;gap:8px;padding:0 16px;font-size:13px;
+    color:var(--text);cursor:pointer;
+  }
+  .tree-item:hover{background:#F0F7FF;}
+  .tree-item.on{background:#EAF4FF;color:var(--primary);font-weight:600;}
+  .tree-item.child{padding-left:36px;color:var(--text-muted);}
+  .tree-item.child.on{color:var(--primary);}
+  .folder-ico{
+    width:16px;height:13px;border-radius:2px;background:#C9DDF5;position:relative;flex:0 0 16px;
+  }
+  .folder-ico::before{
+    content:"";position:absolute;left:0;top:-4px;width:8px;height:5px;background:#C9DDF5;
+    border-radius:2px 2px 0 0;
+  }
+
+  .content{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .crumb{
+    height:44px;flex:0 0 44px;display:flex;align-items:center;gap:6px;
+    padding:0 18px;font-size:13px;color:var(--text-muted);border-bottom:1px solid var(--border-light);
+  }
+  .crumb button{
+    border:none;background:none;font-family:inherit;font-size:13px;color:var(--text-muted);
+    cursor:pointer;padding:2px 4px;border-radius:3px;
+  }
+  .crumb button:hover{color:var(--primary);background:#F0F7FF;}
+  .crumb .sep{color:var(--text-faint);}
+  .crumb .cur{color:var(--text);font-weight:600;padding:2px 4px;}
+
+  .table-head{
+    display:grid;grid-template-columns:1fr 120px 160px;gap:0;
+    height:38px;align-items:center;padding:0 18px;
+    background:#FAFBFC;border-bottom:1px solid var(--border-light);
+    font-size:12px;color:var(--text-muted);
+  }
+  .table-body{flex:1;overflow:auto;}
+  .row{
+    display:grid;grid-template-columns:1fr 120px 160px;align-items:center;
+    height:42px;padding:0 18px;border-bottom:1px solid #F5F6F7;font-size:13px;cursor:default;
+  }
+  .row:hover{background:#F7FBFF;}
+  .row .name{display:flex;align-items:center;gap:9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .row .size,.row .time{color:var(--text-muted);font-size:12px;}
+  .row.folder{cursor:pointer;}
+  .file-ico{
+    width:16px;height:16px;border:1px solid #B7C4D4;border-radius:2px;flex:0 0 16px;position:relative;
+    background:#fff;
+  }
+  .file-ico::after{
+    content:"";position:absolute;right:-1px;top:-1px;border:4px solid transparent;
+    border-top-color:#B7C4D4;border-right-color:#B7C4D4;
+  }
+  .empty{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;gap:10px;color:var(--text-faint);font-size:13px;
+  }
+  .empty .box{
+    width:64px;height:48px;border:1px dashed #D6DCE4;border-radius:6px;
+  }
+  .statusbar{
+    height:40px;flex:0 0 40px;border-top:1px solid var(--border-light);
+    display:flex;align-items:center;padding:0 16px;gap:12px;font-size:12px;color:var(--text-muted);
+  }
+  .statusbar .spacer{flex:1;}
+  .progress{
+    width:120px;height:12px;border-radius:6px;background:#EEF1F4;overflow:hidden;
+  }
+  .progress i{display:block;height:100%;width:0.3%;background:var(--primary);border-radius:6px;}
+
+  .caption{
+    max-width:760px;margin:16px auto 0;font-size:12px;color:var(--text-muted);
+    line-height:1.9;text-align:center;
+  }
+  .caption b{color:var(--text);}
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <h1>网盘客户端 · 界面草图</h1>
+  <button class="demo-tab on" data-target="screen-login">登录窗</button>
+  <button class="demo-tab" data-target="screen-main">主界面</button>
+  <span class="hint">可点击 · 仅示意布局，非最终 Qt 渲染效果</span>
+</div>
+
+<!-- ================= 登录窗 ================= -->
+<section id="screen-login" class="screen on">
+  <div class="dialog">
+    <aside class="brand">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="logo-mark"><span></span></div>
+      <h2>网盘</h2>
+      <p>私有云存储 · 多用户版</p>
+      <div class="feats">
+        <div><i class="dot"></i>断点续传 · 秒传去重</div>
+        <div><i class="dot"></i>每人 5 GB 空间</div>
+        <div><i class="dot"></i>多账户隔离</div>
+      </div>
+    </aside>
+
+    <div class="form-side">
+      <div class="tabs" id="login-tabs">
+        <button class="tab on" type="button">账号登录</button>
+        <button class="tab" type="button" disabled title="暂未开放">扫码登录</button>
+      </div>
+
+      <!-- 登录态 -->
+      <form id="login-form" autocomplete="off">
+        <div class="field">
+          <label for="u">用户名</label>
+          <input class="input" id="u" placeholder="请输入用户名" value="alice">
+        </div>
+        <div class="field">
+          <label for="p">密码</label>
+          <input class="input has-eye" id="p" type="password" placeholder="请输入密码" value="pass12345">
+          <button class="eye" type="button" data-eye="p">显示</button>
+        </div>
+
+        <div class="error-slot">
+          <div class="error-bar" id="login-error"><span class="x">!</span><span id="login-error-text">账号或密码错误</span></div>
+        </div>
+
+        <button class="submit" type="submit" id="login-submit">登 录</button>
+
+        <div class="form-foot">
+          <button class="link blue" type="button" id="to-register">注册账号</button>
+          <button class="link gray" type="button" id="open-server">设置服务器</button>
+        </div>
+      </form>
+
+      <!-- 注册态 -->
+      <form id="register-form" autocomplete="off" style="display:none">
+        <div class="field">
+          <label for="ru">用户名</label>
+          <input class="input" id="ru" placeholder="3–20 个字符，字母/数字/_/-">
+        </div>
+        <div class="field">
+          <label for="rp">密码</label>
+          <input class="input has-eye" id="rp" type="password" placeholder="8–64 个字符">
+          <button class="eye" type="button" data-eye="rp">显示</button>
+        </div>
+        <div class="field">
+          <label for="rp2">确认密码</label>
+          <input class="input" id="rp2" type="password" placeholder="请再次输入密码">
+        </div>
+
+        <div class="error-slot">
+          <div class="error-bar" id="reg-error"><span class="x">!</span><span id="reg-error-text">两次输入的密码不一致</span></div>
+        </div>
+
+        <button class="submit" type="submit" id="reg-submit">注 册</button>
+
+        <div class="form-foot">
+          <button class="link blue" type="button" id="to-login">返回登录</button>
+        </div>
+      </form>
+
+      <div class="tip">按 Enter 提交 · Esc 退出</div>
+    </div>
+  </div>
+
+  <p class="caption">
+    <b>可试：</b>点“显示”切换密码明文 · 点“注册账号”切到注册态 · 点“登录”看加载态与成功跳转 ·
+    点“设置服务器”看弹窗 · 故意把密码改短再登录可看错误条。
+  </p>
+</section>
+
+<!-- ================= 主界面 ================= -->
+<section id="screen-main" class="screen">
+  <div class="mainwin">
+    <div class="toolbar">
+      <button class="tool primary">新建文件夹</button>
+      <button class="tool">刷新</button>
+      <button class="tool" disabled title="阶段 3 开放">上传</button>
+      <div class="spacer"></div>
+      <span class="user">alice</span>
+      <button class="tool">退出登录</button>
+    </div>
+
+    <div class="workspace">
+      <aside class="tree">
+        <div class="tree-item on" data-path="root"><i class="folder-ico"></i>我的网盘</div>
+        <div class="tree-item child" data-path="doc"><i class="folder-ico"></i>文档</div>
+        <div class="tree-item child" data-path="pic"><i class="folder-ico"></i>图片</div>
+      </aside>
+
+      <div class="content">
+        <div class="crumb" id="crumb">
+          <span class="cur">我的网盘</span>
+        </div>
+
+        <div class="table-head">
+          <span>名称</span><span>大小</span><span>修改时间</span>
+        </div>
+
+        <div class="table-body" id="table-body">
+          <div class="row folder" data-folder="doc">
+            <span class="name"><i class="folder-ico"></i>文档</span>
+            <span class="size">—</span><span class="time">2026-11-04 20:15</span>
+          </div>
+          <div class="row folder" data-folder="pic">
+            <span class="name"><i class="folder-ico"></i>图片</span>
+            <span class="size">—</span><span class="time">2026-11-04 20:15</span>
+          </div>
+          <div class="row">
+            <span class="name"><i class="file-ico"></i>作业.zip</span>
+            <span class="size">12.4 MB</span><span class="time">2026-11-04 20:02</span>
+          </div>
+          <div class="row">
+            <span class="name"><i class="file-ico"></i>论文.pdf</span>
+            <span class="size">3.8 MB</span><span class="time">2026-11-04 19:58</span>
+          </div>
+        </div>
+
+        <div class="statusbar">
+          <span id="usage">已用 16.2 MB / 5.0 GB</span>
+          <span class="spacer"></span>
+          <div class="progress"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="caption">
+    <b>可试：</b>双击“文档”或点左侧目录树进入子目录 · 点面包屑返回上一级 · 悬停“上传”看禁用提示。
+    主界面只做目录浏览与新建文件夹，上传进度条属阶段 5。
+  </p>
+</section>
+
+<!-- 服务器设置弹窗 -->
+<div class="mask" id="server-mask">
+  <div class="mini">
+    <h3>设置服务器</h3>
+    <p>填写服务端地址，需以 http:// 或 https:// 开头。修改后下次启动仍然有效。</p>
+    <input class="input" id="server-input" value="http://127.0.0.1:8080">
+    <div class="actions">
+      <button class="btn-ghost" id="server-cancel" type="button">取消</button>
+      <button class="btn-solid" id="server-ok" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 演示页签切换
+  document.querySelectorAll('.demo-tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.demo-tab').forEach(function(x){ x.classList.remove('on'); });
+      t.classList.add('on');
+      document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('on'); });
+      document.getElementById(t.dataset.target).classList.add('on');
+    });
+  });
+
+  // 显示/隐藏密码
+  document.querySelectorAll('.eye').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var input = document.getElementById(btn.dataset.eye);
+      if(input.type === 'password'){ input.type = 'text'; btn.textContent = '隐藏'; }
+      else { input.type = 'password'; btn.textContent = '显示'; }
+    });
+  });
+
+  // 登录 / 注册态切换
+  var loginForm = document.getElementById('login-form');
+  var regForm = document.getElementById('register-form');
+  var tabs = document.getElementById('login-tabs');
+
+  document.getElementById('to-register').addEventListener('click', function(){
+    loginForm.style.display = 'none';
+    tabs.style.display = 'none';
+    regForm.style.display = 'flex';
+  });
+  document.getElementById('to-login').addEventListener('click', function(){
+    regForm.style.display = 'none';
+    document.getElementById('reg-error').classList.remove('show');
+    tabs.style.display = 'flex';
+    loginForm.style.display = 'flex';
+  });
+
+  // 登录提交：加载态 → 成功进入主界面；密码过短演示错误态
+  document.getElementById('login-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var err = document.getElementById('login-error');
+    var btn = document.getElementById('login-submit');
+    var pwd = document.getElementById('p').value;
+
+    if(pwd.length < 8){
+      document.getElementById('login-error-text').textContent = '密码需 8–64 个字符';
+      err.classList.add('show');
+      return;
+    }
+    err.classList.remove('show');
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+    setTimeout(function(){
+      btn.disabled = false;
+      btn.textContent = '登 录';
+      document.querySelectorAll('.demo-tab').forEach(function(x){ x.classList.remove('on'); });
+      document.querySelector('[data-target="screen-main"]').classList.add('on');
+      document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('on'); });
+      document.getElementById('screen-main').classList.add('on');
+    }, 900);
+  });
+
+  // 注册提交：校验两次密码
+  document.getElementById('register-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var a = document.getElementById('rp').value;
+    var b = document.getElementById('rp2').value;
+    var err = document.getElementById('reg-error');
+    if(a !== b){
+      document.getElementById('reg-error-text').textContent = '两次输入的密码不一致';
+      err.classList.add('show');
+      return;
+    }
+    err.classList.remove('show');
+    var btn = document.getElementById('reg-submit');
+    btn.disabled = true; btn.textContent = '注册中…';
+    setTimeout(function(){
+      btn.disabled = false; btn.textContent = '注 册';
+      regForm.style.display = 'none';
+      tabs.style.display = 'flex';
+      loginForm.style.display = 'flex';
+    }, 900);
+  });
+
+  // 服务器设置弹窗
+  var mask = document.getElementById('server-mask');
+  document.getElementById('open-server').addEventListener('click', function(){
+    mask.classList.add('on');
+  });
+  document.getElementById('server-cancel').addEventListener('click', function(){
+    mask.classList.remove('on');
+  });
+  document.getElementById('server-ok').addEventListener('click', function(){
+    var v = document.getElementById('server-input').value.trim();
+    if(!(v.indexOf('http://') === 0 || v.indexOf('https://') === 0)){
+      alert('地址必须以 http:// 或 https:// 开头');
+      return;
+    }
+    mask.classList.remove('on');
+  });
+
+  // 主界面：进入目录 / 面包屑返回
+  var rootRows = document.getElementById('table-body').innerHTML;
+  var nameMap = { doc:'文档', pic:'图片' };
+
+  function setCrumb(code){
+    var crumb = document.getElementById('crumb');
+    if(code === 'root'){
+      crumb.innerHTML = '<span class="cur">我的网盘</span>';
+    } else {
+      crumb.innerHTML =
+        '<button type="button" data-back="root">我的网盘</button>' +
+        '<span class="sep">/</span><span class="cur">' + nameMap[code] + '</span>';
+      crumb.querySelector('[data-back]').addEventListener('click', function(){
+        setCrumb('root');
+      });
+    }
+    document.querySelectorAll('.tree-item').forEach(function(t){
+      t.classList.toggle('on', t.dataset.path === code);
+    });
+  }
+
+  function enterFolder(code){
+    setCrumb(code);
+    document.getElementById('table-body').innerHTML =
+      '<div class="empty"><div class="box"></div><div>这个文件夹还没有文件</div></div>';
+  }
+
+  document.querySelectorAll('.tree-item').forEach(function(t){
+    t.addEventListener('click', function(){
+      if(t.dataset.path === 'root'){
+        setCrumb('root');
+        document.getElementById('table-body').innerHTML = rootRows;
+      } else {
+        enterFolder(t.dataset.path);
+      }
+    });
+  });
+
+  document.getElementById('table-body').addEventListener('dblclick', function(e){
+    var row = e.target.closest('.row.folder');
+    if(row){ enterFolder(row.dataset.folder); }
+  });
+</script>
+</body>
+</html>

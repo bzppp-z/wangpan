@@ -206,8 +206,14 @@ ctest --test-dir build-wsl --output-on-failure
 **文件：**
 - Create：`server/src/util/crypto.h`、`server/src/util/crypto.cpp`
 - Create：`server/src/api/auth.h`、`server/src/api/auth.cpp`
+- Create：`server/tests/test_auth.cpp`
+- Modify：`server/CMakeLists.txt`（新增 `test_auth` 目标）
 - Modify：`server/src/main.cpp`（注册路由）
 - Modify：`scripts/smoke.sh`（追加账户用例）
+
+**提交拆分（本任务 2 个提交）：**
+1. `test(auth): 鉴权与会话用例｜先红`：提交 `test_auth.cpp`、`crypto.h/.cpp` 与 `auth.h/.cpp` 的**可编译桩**（`sha256_hex` 返回空串、`auth::resolve` 返回 false）、CMake 测试目标；预期 `ctest` 中 `auth` FAIL，但工程能编译。
+2. `phase1: 注册/登录/登出与 Bearer 鉴权｜token 只存哈希，登出立即失效`：实现真实逻辑 + 路由 + 冒烟断言 + 计划勾选；预期 `ctest` 全绿。
 
 **接口契约：**
 
@@ -222,7 +228,81 @@ ctest --test-dir build-wsl --output-on-failure
 
 **步骤：**
 
-- [ ] 先在 `scripts/smoke.sh` 追加以下用例并运行，确认全部失败：
+- [ ] 先写 `server/tests/test_auth.cpp`（配套上面的桩，预期 5 条断言全失败）：
+
+```cpp
+#include <cstdio>
+#include <ctime>
+#include <string>
+#include "httplib.h"
+#include "db/db.h"
+#include "db/users.h"
+#include "db/sessions.h"
+#include "util/crypto.h"
+#include "api/auth.h"
+
+static int g_fail = 0;
+static void expect(bool ok, const char* name) {
+    std::printf("%s: %s\n", ok ? "PASS" : "FAIL", name);
+    if (!ok) ++g_fail;
+}
+
+int main() {
+    std::string err;
+    expect(db::open(":memory:", err), "open memory db");
+    db::init_schema(err);
+
+    long long uid = 0;
+    db::create_user("alice", "salt", "hash", 5368709120LL, uid, err);
+
+    const std::string token = crypto::random_hex(32);
+    expect(token.size() == 64, "token is 64 hex chars");
+
+    const std::time_t now = std::time(nullptr);
+    db::create_session(uid, crypto::sha256_hex(token), now + 3600);
+
+    httplib::Request req;
+    req.set_header("Authorization", "Bearer " + token);
+    long long got = 0;
+    expect(auth::resolve(req, got), "valid token resolves");
+    expect(got == uid, "resolved user_id");
+
+    httplib::Request no_header;
+    long long ignored = 0;
+    expect(!auth::resolve(no_header, ignored), "missing header rejected");
+
+    httplib::Request forged;
+    forged.set_header("Authorization", "Bearer " + std::string(64, 'f'));
+    expect(!auth::resolve(forged, ignored), "forged token rejected");
+
+    const std::string expired_token = crypto::random_hex(32);
+    db::create_session(uid, crypto::sha256_hex(expired_token), now - 1);
+    httplib::Request expired;
+    expired.set_header("Authorization", "Bearer " + expired_token);
+    expect(!auth::resolve(expired, ignored), "expired token rejected");
+
+    db::delete_session(crypto::sha256_hex(token));
+    expect(!auth::resolve(req, ignored), "token rejected after logout");
+
+    db::close();
+    std::printf("auth: %s (%d failed)\n", g_fail ? "FAILED" : "OK", g_fail);
+    return g_fail ? 1 : 0;
+}
+```
+
+- [ ] 在 `CMakeLists.txt` 追加（与 `test_schema` 并列）：
+
+```cmake
+add_executable(test_auth tests/test_auth.cpp
+  src/db/db.cpp src/db/users.cpp src/db/sessions.cpp src/util/crypto.cpp src/api/auth.cpp)
+target_include_directories(test_auth PRIVATE src third_party)
+target_link_libraries(test_auth PRIVATE SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
+add_test(NAME auth COMMAND test_auth)
+```
+
+- [ ] 跑 `ctest`，确认 `auth` 为 Failed（`open memory db` 等前几条可能已 PASS，`valid token resolves` 起应失败），提交第 1 个 commit。
+
+- [ ] 然后追加 `scripts/smoke.sh` 用例（与单元测试互补，验证 HTTP 路线）：
 
 ```bash
 rg=$(curl -s -o /tmp/wp_reg.json -w '%{http_code}' -X POST "$BASE/api/register" \
@@ -249,9 +329,11 @@ check "files without token 401" 401 "$noauth"
 - [ ] 实现登录：按用户名查 → PBKDF2 比对（`CRYPTO_memcmp` 定长比较）→ 建会话 → 200；账号不存在与密码错误**返回同一个 401**，不泄露账号是否存在。
 - [ ] 实现鉴权中间件：`auth::resolve(req, out_user_id)` 解析 `Bearer`，查 `sessions` 并校验 `expires_at > now`；失败返回 401 `{"error":"unauthorized"}`。
 - [ ] 实现登出：删除当前 token 对应的会话记录 → 204。
-- [ ] 编译、重启服务端、重跑 `scripts/smoke.sh`
-  - 预期：register 201 / duplicate 409 / wrong password 401 全部 PASS。
+- [ ] 编译、重启服务端、跑 `ctest` 与 `scripts/smoke.sh`
+  - `ctest` 预期：`schema`、`auth` 两个测试全部 Passed；
+  - 冒烟预期：register 201 / duplicate 409 / wrong password 401 全部 PASS。
   - 其中 `files without token 401` 这一条此时仍是 FAIL（`/api/files` 属于 Task 4），Task 4 完成后转绿，属预期。
+- [ ] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
 
 **安全 / 边界说明：** 数据库中只存 salt 与 PBKDF2 结果，不存明文；日志只记录用户名与结果码，不记录密码和 token；登录失败的响应体与耗时不做区分（不存在与密码错误走同一分支）。
 
@@ -351,7 +433,7 @@ bash scripts/smoke.sh http://127.0.0.1:18080
 ## 阶段完成清单
 
 - [ ] 5 个任务全部完成
-- [ ] `ctest` 通过（`schema` 测试）
+- [ ] `ctest` 通过（`schema`、`auth` 两个测试）
 - [ ] `scripts/smoke.sh` 全绿，退出码 0
 - [ ] 重启后数据与 token 仍有效
 - [ ] 跨账户访问返回 404，未登录访问返回 401

@@ -60,6 +60,10 @@ CREATE INDEX IF NOT EXISTS idx_upload_sessions_resume
 - Modify：`server/CMakeLists.txt`（加入 `src/storage/blob.cpp`、`test_storage` 目标）
 - Modify：`server/src/config.h`、`config.cpp`（新增 `--quota-bytes` 参数，默认 5 GiB；供 Task 6 用小配额实例验证）
 
+**提交拆分（本任务 2 个提交）：**
+1. `test(storage): 分片扫描/合并/哈希用例｜先红`：提交 `test_storage.cpp`、`blob.h` 与可编译桩（`merge_and_hash` 返回 false）、CMake 目标；预期 `ctest` 中 `storage` FAIL，工程仍可编译。
+2. `phase3: 分片落盘与合并｜服务端自算 SHA-256，原子 rename 防半截文件`：实现 `blob.cpp` 与配置参数；预期 `ctest` 全绿。
+
 **函数签名（后续任务直接调用，不再改名）：**
 
 ```cpp
@@ -112,15 +116,83 @@ ctest --test-dir build-wsl --output-on-failure
 
 **文件：**
 - Create：`server/src/api/upload.h`、`server/src/api/upload.cpp`（先只实现 init）
+- Create：`server/tests/test_instant.cpp`
+- Modify：`server/CMakeLists.txt`（新增 `test_instant` 目标）
 - Modify：`server/src/db/schema.h`（追加上面的 resume 索引）
-- Modify：`server/src/db/files.h`、`files.cpp`（新增按 sha 查"本账户是否已有同内容"、按最终名称创建文件条目）
-- Modify：`server/src/db/blobs.h`、`blobs.cpp`（新增：按 sha 查或建 blob、`refcount + 1`）
+- Modify：`server/src/db/files.h`、`files.cpp`（新增 `find_owned_by_sha(owner_id, sha, out_file_id, err)`、`create_file_entry(owner_id, parent_id, desired_name, blob_id, size, out_id, out_name, err)`）
+- Modify：`server/src/db/blobs.h`、`blobs.cpp`（新增 `get_or_create(sha, size, out_id, err)`、`incref(blob_id, err)`）
 - Modify：`server/src/main.cpp`（注册路由）
 - Modify：`scripts/smoke.sh`（追加 init 用例）
 
+**提交拆分（本任务 2 个提交）：**
+1. `test(instant): 秒传归属判定用例｜先红`：提交 `test_instant.cpp`、`files.h` / `blobs.h` 声明与桩（`find_owned_by_sha` 恒返回 false）、CMake 目标；预期 `ctest` 中 `instant` FAIL，其余测试仍 PASS。
+2. `phase3: 上传初始化与秒传｜只认本账户已有内容，防跨账户白拿`：实现数据访问与 `init` 路由、冒烟断言、计划勾选；预期 `ctest` 全绿。
+
 **步骤：**
 
-- [ ] 先在 `scripts/smoke.sh` 追加（沿用阶段 1 的 `$token`，文件用 5 MiB 随机内容）：
+- [ ] 先写 `server/tests/test_instant.cpp`（配套桩，预期 `alice owns` 起失败）：
+
+```cpp
+#include <cstdio>
+#include <ctime>
+#include <string>
+#include <sqlite3.h>
+#include "db/db.h"
+#include "db/users.h"
+#include "db/blobs.h"
+#include "db/files.h"
+
+static int g_fail = 0;
+static void expect(bool ok, const char* name) {
+    std::printf("%s: %s\n", ok ? "PASS" : "FAIL", name);
+    if (!ok) ++g_fail;
+}
+
+int main() {
+    std::string err;
+    db::open(":memory:", err);
+    db::init_schema(err);
+
+    long long alice = 0, bob = 0;
+    db::create_user("alice", "salt", "hash", 5368709120LL, alice, err);
+    db::create_user("bob",   "salt", "hash", 5368709120LL, bob, err);
+
+    const std::string sha(64, 'a');
+    long long blob_id = 0;
+    db::blobs::get_or_create(sha, 10, blob_id, err);
+
+    long long file_id = 0;
+    std::string final_name;
+    db::files::create_file_entry(alice, 0, "a.bin", blob_id, 10, file_id, final_name, err);
+
+    long long found = 0;
+    expect(db::files::find_owned_by_sha(alice, sha, found, err), "alice owns same content");
+    expect(found == file_id, "alice matched file id");
+    expect(!db::files::find_owned_by_sha(bob, sha, found, err), "bob does not own content");
+
+    // 回收站中的条目仍算"已拥有"（PRD R9/R10）
+    const std::string sql = "UPDATE files SET deleted_at=" + std::to_string(std::time(nullptr)) +
+                            " WHERE id=" + std::to_string(file_id);
+    sqlite3_exec(db::handle(), sql.c_str(), nullptr, nullptr, nullptr);
+    expect(db::files::find_owned_by_sha(alice, sha, found, err), "trashed file still owned");
+
+    db::close();
+    std::printf("instant: %s (%d failed)\n", g_fail ? "FAILED" : "OK", g_fail);
+    return g_fail ? 1 : 0;
+}
+```
+
+- [ ] 在 `CMakeLists.txt` 追加（与其它测试并列）：
+
+```cmake
+add_executable(test_instant tests/test_instant.cpp
+  src/db/db.cpp src/db/users.cpp src/db/blobs.cpp src/db/files.cpp)
+target_include_directories(test_instant PRIVATE src third_party)
+target_link_libraries(test_instant PRIVATE SQLite::SQLite3 Threads::Threads)
+add_test(NAME instant COMMAND test_instant)
+```
+
+- [ ] 跑 `ctest`，确认 `instant` Failed 后提交第 1 个 commit，再追加 `scripts/smoke.sh` 用例（沿用阶段 1 的 `$token`，文件用 5 MiB 随机内容）：
 
 ```bash
 dd if=/dev/urandom of=/tmp/wp_big.bin bs=1M count=5 status=none
@@ -144,7 +216,8 @@ check "invalid sha 400" 400 "$badsha"
   4. 秒传：查"该账户任一 `files` 行（不区分 `deleted_at`、`kind='file'`）的 `blob_id` 对应此 sha"；命中 → 按 R2 取唯一名称、插入新条目、`blobs.refcount + 1` → 201 `instant=true`；
   5. 续传：查 `upload_sessions` 中 `owner_id/parent_id/name/size/sha256` 相同、`created_at >= now - 7d`、且会话目录存在 → 直接返回该会话与 `received`；
   6. 否则删除该账户下同 sha 的过期会话，生成 `session_id`、建目录、插入 `upload_sessions` → 200。
-- [ ] 运行，确认 `upload init 200`、`init chunk_count 2`、`invalid sha 400` 三条 PASS。
+- [ ] 运行 `ctest`，确认 `instant` 转绿；重跑冒烟，确认 `upload init 200`、`init chunk_count 2`、`invalid sha 400` 三条 PASS。
+- [ ] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
 
 **安全 / 边界说明：** 客户端提交的 `sha256` **只**用于"判断自己是否已拥有"和"合并后比对"，绝不因为"服务器上存在该 sha 的 blob"就跳过上传——否则任何账号都能凭 sha 白拿别人的文件（PRD R10）。
 
@@ -347,7 +420,7 @@ sha256sum /tmp/wp-test/blob/*/*/$(sha256sum test-1gb.bin | cut -d' ' -f1) 2>/dev
 ## 阶段完成清单
 
 - [ ] 6 个任务全部完成
-- [ ] `ctest` 中 `schema`、`storage` 全过
+- [ ] `ctest` 中 `schema`、`auth`、`storage`、`instant` 全过
 - [ ] `scripts/smoke.sh` 全绿（含 init、分片、续传、完成、秒传、跨账户）
 - [ ] 5 MiB / 1 GB 文件上传后落盘 sha 与本地一致
 - [ ] 断点续传：只补缺失分片，进度不归零

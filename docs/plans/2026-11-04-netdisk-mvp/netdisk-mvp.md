@@ -38,7 +38,7 @@
 | `server/src/api/trash.h` `trash.cpp` | Create | 软删除、回收站列表、恢复、彻底删除、清空、30 天清理 | 阶段 5 |
 | `server/src/util/range.h` `mime.h` | Create | Range 解析、扩展名 → MIME 白名单 | 阶段 4 |
 | `server/tests/test_schema.cpp` | Create | 建表与基础读写测试（CTest） | 阶段 1 |
-| `server/tests/test_storage.cpp` `test_range.cpp` `test_trash.cpp` | Create | 存储合并、Range 解析、回收站与引用计数 | 阶段 3、4、5 |
+| `server/tests/test_auth.cpp` `test_storage.cpp` `test_instant.cpp` `test_range.cpp` `test_trash.cpp` | Create | 鉴权与会话、存储合并、秒传归属、Range 解析、回收站与引用计数 | 阶段 1、3、4、5 |
 | `client/src/transfer/*` | Create | `transferutil`、`hashworker`、`uploadtask`、`downloadtask`、`transfermanager` | 阶段 3、4、5 |
 | `client/src/ui/previewpanel.*` `transferpanel.*` `trashdialog.*` `uploadcontroller.*` | Create | 预览面板、传输面板、回收站对话框、上传路径编排 | 阶段 3、4、5 |
 | `scripts/smoke.sh` | Create | 端到端冒烟脚本（curl 断言） | 阶段 1 起，逐阶段追加 |
@@ -121,9 +121,10 @@
 
 ### 仓库与提交
 
-- 项目根目录初始化仓库（当前尚未初始化）：`git init` → `git remote add origin <GitHub 仓库地址>` → 首次提交后 `git push -u origin main`。
+- 仓库已初始化并关联 `https://github.com/bzppp-z/wangpan`，`main` 已推送；后续每个任务提交后直接 `git push`。
 - 忽略规则见根目录 `.gitignore`：`build-wsl/`、`data/`、`*.db`、`dist/`、`client/**/release`、`*.pro.user`、`Makefile`、`.qmake.stash`、日志与密钥一律不提交。
 - **每完成一个计划任务 = 一次本地提交 + 立即推送**。消息格式：`phaseN: 任务名｜关键决策`，例如 `phase3: 分片上传与合并｜服务端自算 SHA-256 防伪造`。
+- **总提交数 33**：30 个任务各 1 次提交；其中「Bearer 鉴权」（阶段 1 Task 3）、「分片合并与哈希」（阶段 3 Task 1）、「秒传判定」（阶段 3 Task 2）三个核心模块各拆成 `test(xxx): …｜先红` + `phaseN: …｜转绿` 两次提交，提交内含可编译桩，保证每一步仓库都能编译。
 - 推送失败（网络问题）**不阻塞开发**：本地提交照常进行，恢复后一次 `git push`，提交历史仍然完整；不要为了推送把多个任务合并成一个提交。
 - 每阶段完成打 tag：`v0.1-phase1`、`v0.2-phase2` … `v1.0`；阶段 6 把免安装 zip 挂到 GitHub Release。
 - 已推送的提交不 `amend`、不强推；需要返工就新增一个修复提交。

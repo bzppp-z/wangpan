@@ -210,6 +210,15 @@ void UploadTask::handleInitReply(QNetworkReply* reply) {
         return;
     }
 
+    // 507 是配额不足，不是可重试的服务端故障，必须先于 5xx 重试分支判断。
+    if (status == 401) {
+        fail(QStringLiteral("登录已过期，请重新登录"));
+        return;
+    }
+    if (status == 507) {
+        fail(QStringLiteral("空间不足，请先清理文件"));
+        return;
+    }
     if (status == 0 || status >= 500) {
         ++retry_;
         if (retry_ <= kMaxRetries) {
@@ -217,14 +226,6 @@ void UploadTask::handleInitReply(QNetworkReply* reply) {
             return;
         }
         pauseWithError(QStringLiteral("网络中断，已暂停"));
-        return;
-    }
-    if (status == 401) {
-        fail(QStringLiteral("登录已过期，请重新登录"));
-        return;
-    }
-    if (status == 507) {
-        fail(QStringLiteral("空间不足，请先清理文件"));
         return;
     }
     if (status < 200 || status >= 300) {
@@ -389,6 +390,14 @@ void UploadTask::handleCompleteReply(QNetworkReply* reply) {
         return;
     }
 
+    if (status == 401) {
+        fail(QStringLiteral("登录已过期，请重新登录"));
+        return;
+    }
+    if (status == 507) {
+        fail(QStringLiteral("空间不足，请先清理文件"));
+        return;
+    }
     if (status == 0 || status >= 500) {
         ++retry_;
         if (retry_ <= kMaxRetries) {
@@ -396,14 +405,6 @@ void UploadTask::handleCompleteReply(QNetworkReply* reply) {
             return;
         }
         pauseWithError(QStringLiteral("网络中断，已暂停"));
-        return;
-    }
-    if (status == 401) {
-        fail(QStringLiteral("登录已过期，请重新登录"));
-        return;
-    }
-    if (status == 507) {
-        fail(QStringLiteral("空间不足，请先清理文件"));
         return;
     }
     if (status < 200 || status >= 300) {

@@ -83,10 +83,14 @@ QString ApiClient::errorTextFor(int status, const QString& body, QNetworkReply::
         return message;
     }
     switch (status) {
+        case 400:
+            return QStringLiteral("请求参数有误，请检查后重试");
         case 401:
             return QStringLiteral("登录已过期，请重新登录");
         case 413:
             return QStringLiteral("内容过大，请检查输入");
+        case 507:
+            return QStringLiteral("空间不足，请先清理文件");
         case 500:
         case 502:
         case 503:

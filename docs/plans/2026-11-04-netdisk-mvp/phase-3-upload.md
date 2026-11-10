@@ -392,7 +392,7 @@ QTEST_MAIN(TestTransfer)
 
 **步骤：**
 
-- [ ] 秒传（同账户）：用另一个名称对同一 sha 再 `init`：
+- [x] 秒传（同账户）：用另一个名称对同一 sha 再 `init`：
 
 ```bash
 ins=$(curl -s -o /tmp/wp_inst.json -w '%{http_code}' -X POST "$BASE/api/upload/init" \
@@ -402,25 +402,27 @@ check "instant upload 201" 201 "$ins"
 check_grep "instant flag" /tmp/wp_inst.json '"instant":true'
 ```
 
-- [ ] 跨账户不秒传：用 bob 的 token 对同一 sha `init`，断言 `"instant":false` 且返回 `session_id`（R10）。
-- [ ] 校验失败：上传第 0 片后，用一个错误字节覆盖 `/tmp/wp_part_1`，`complete` 预期 400 `checksum_mismatch`，且会话目录被清空（`ls /tmp/wp-test/tmp/<sid>` 不存在）。
-- [ ] 小配额实例（另开端口，避免污染主测试库）：
+  - 实测：已并入 `scripts/smoke.sh`，断言 `秒传 201`、`秒传 instant true`、`同名秒传 201`、`同名秒传自动改名`（返回 `big.bin (1)`）。1 GiB 秒传 `init` 实测 17 ms。
+
+- [x] 跨账户不秒传：用 bob 的 token 对同一 sha `init`，断言 `"instant":false` 且返回 `session_id`（R10）。
+  - 实测：`跨账户不秒传 200`、`跨账户 instant false` 两条断言通过；bob 的会话随即 `DELETE` 清理。
+- [x] 校验失败：上传第 0 片后，用一个错误字节覆盖 `/tmp/wp_part_1`，`complete` 预期 400 `checksum_mismatch`，且会话目录被清空（`ls /tmp/wp-test/tmp/<sid>` 不存在）。
+  - 实测：返回 400 `checksum_mismatch`，随后 `GET /api/upload/{sid}` 404，`/tmp/wp-smoke6/tmp` 为空。
+- [x] 小配额实例（另开端口，避免污染主测试库）：
 
 ```bash
 ./build-wsl/wangpan_server --port 18081 --data-dir /tmp/wp-quota --quota-bytes 1048576
 # 注册 dave 后上传 5 MiB：init 预期 507
 ```
 
-- [ ] 大文件：`fsutil file createnew C:\Users\bzp20\Desktop\wangpan\test-1gb.bin 1073741824` → 客户端上传 → 完成后在 WSL 里校验：
+  - 实测：在 `--port 18086 --quota-bytes 1048576` 实例上拖入 5 MB 文件，`init` 返回 507，状态栏红字"空间不足，请先清理文件"，上传摘要与进度条同时隐藏。
+  - **修复**：`UploadTask` 原来把 `status >= 500` 一律当成可重试的服务端故障，导致 507 被重试三次后误报"网络中断，已暂停"。已把 401/507 判断移到 5xx 重试分支之前（`uploadtask.cpp` 的 init 与 complete 两处）。
 
-```bash
-sha256sum /tmp/wp-test/blob/*/*/$(sha256sum test-1gb.bin | cut -d' ' -f1) 2>/dev/null || \
-  find /tmp/wp-test/blob -type f -size 1073741824c -exec sha256sum {} \;
-```
-
-  - 预期：落盘文件 sha 与本地一致；客户端显示大小 1.0 GB。
-- [ ] 关掉客户端再打开、对同一文件重新上传 → `init` 返回原 session 与已收分片，进度不归零（服务端 7 天内保留）。
-- [ ] 截图 `docs/ui-shots/phase3-quota-error.png`。
+- [x] 大文件：`fsutil file createnew ... 1073741824` → 客户端上传 → 完成后在 WSL 里校验：
+  - 实测：`ui8` 上传 1 GiB（内容全零），耗时约 89 s、平均约 12 MB/s（含客户端本地 SHA-256）；服务端 `used_bytes=1073741824`；落盘 `blob/49/bc/49bc20df…68a14`，与本地 `sha256sum` 完全一致；`tmp/` 为空。
+- [x] 关掉客户端再打开、对同一文件重新上传 → `init` 返回原 session 与已收分片，进度不归零（服务端 7 天内保留）。
+  - 实测：服务端冒烟断言 `重复 init 200`、`同名同 sha 返回同一会话`、`续传带 received`（`received:[0]`）；客户端 `UploadTask::resume()` 在 120 MiB 用例中从 16,777,216 字节处继续，未重传前 4 片。
+- [x] 截图 `docs/ui-shots/phase3-quota-error.png`。
 
 **安全 / 边界说明：** 本阶段所有"文件不存在"的分支统一 404，不区分"不存在"与"不是你的"（R0）。
 
@@ -428,16 +430,16 @@ sha256sum /tmp/wp-test/blob/*/*/$(sha256sum test-1gb.bin | cut -d' ' -f1) 2>/dev
 
 ## 阶段完成清单
 
-- [ ] 6 个任务全部完成
-- [ ] `ctest` 中 `schema`、`auth`、`storage`、`instant` 全过
-- [ ] `scripts/smoke.sh` 全绿（含 init、分片、续传、完成、秒传、跨账户）
-- [ ] 5 MiB / 1 GB 文件上传后落盘 sha 与本地一致
-- [ ] 断点续传：只补缺失分片，进度不归零
-- [ ] 秒传仅在同账户成立，跨账户必须真实上传
-- [ ] 超配额返回 507 且客户端提示"空间不足"
-- [ ] 大文件上传期间界面不卡死（哈希在子线程）
-- [ ] `client/tests/test_transfer.exe` 4 条用例全过
-- [ ] 截图 3 张归档在 `docs/ui-shots/`
+- [x] 6 个任务全部完成
+- [x] `ctest` 中 `schema`、`auth`、`storage`、`instant` 全过（4/4，0.34 s）
+- [x] `scripts/smoke.sh` 全绿（含 init、分片、续传、完成、秒传、跨账户；62 条断言全 PASS）
+- [x] 5 MiB / 1 GB 文件上传后落盘 sha 与本地一致（1 GiB：`49bc20df…68a14`）
+- [x] 断点续传：只补缺失分片，进度不归零（120 MiB 用例从 16,777,216 字节继续）
+- [x] 秒传仅在同账户成立，跨账户必须真实上传（冒烟 `跨账户不秒传 200`）
+- [x] 超配额返回 507 且客户端提示"空间不足"（并修复了 507 被当成 5xx 重试的问题）
+- [x] 大文件上传期间界面不卡死（哈希在子线程；1 GiB 上传期间每 600 ms 截图连续无停顿）
+- [x] `client/tests/test_transfer.exe` 4 条用例全过（6 个断言）
+- [x] 截图 3 张归档在 `docs/ui-shots/`（`phase3-upload-running.png`、`phase3-upload-done.png`、`phase3-quota-error.png`）
 
 ## 回滚
 

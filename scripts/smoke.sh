@@ -208,6 +208,24 @@ INST=$(curl -s -o /tmp/wp_inst.json -w '%{http_code}' --max-time 5 -X POST "$BAS
 check "秒传 201" 201 "$INST"
 check_grep "秒传 instant true" /tmp/wp_inst.json '"instant":true'
 
+# 同名再看一次：秒传仍然自动改名，不能出现两条同路径
+INST2=$(curl -s -o /tmp/wp_inst2.json -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"big.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "同名秒传 201" 201 "$INST2"
+check_grep "同名秒传自动改名" /tmp/wp_inst2.json '"name":"big.bin (1)"'
+
+# 跨账户：bob 没上传过该内容 → 不能秒传，必须走新会话
+BOBINST=$(curl -s -o /tmp/wp_bobinst.json -w '%{http_code}' --max-time 5 \
+  -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $BTOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"stolen.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "跨账户不秒传 200" 200 "$BOBINST"
+check_grep "跨账户 instant false" /tmp/wp_bobinst.json '"instant":false'
+BSID=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_bobinst.json)
+curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE "$BASE/api/upload/$BSID" \
+  -H "Authorization: Bearer $BTOKEN" > /dev/null
+
 # 取消后状态 404
 head -c 1048576 /dev/urandom > /tmp/wp_small.bin
 SHA2=$(sha256sum /tmp/wp_small.bin | cut -d' ' -f1)

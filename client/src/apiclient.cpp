@@ -48,6 +48,19 @@ QString ApiClient::filesUrl(qlonglong parentId) const {
     return baseUrl_ + QStringLiteral("/api/files?parent_id=%1").arg(parentId);
 }
 
+QNetworkAccessManager* ApiClient::manager() const {
+    return nam_;
+}
+
+QNetworkRequest ApiClient::requestFor(const QString& path, const QString& contentType) const {
+    QNetworkRequest req{QUrl(baseUrl_ + path)};
+    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    if (!token_.isEmpty()) {
+        req.setRawHeader("Authorization", "Bearer " + token_.toUtf8());
+    }
+    return req;
+}
+
 QString ApiClient::errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err) {
     if (status == 0) {
         switch (err) {

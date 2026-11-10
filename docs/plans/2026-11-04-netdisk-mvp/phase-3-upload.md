@@ -294,7 +294,7 @@ check_grep "complete size" /tmp/wp_done.json '"size":5242880'
 
 **步骤：**
 
-- [ ] 先写 `client/tests/test_transfer.cpp`（纯函数，无网络）：
+- [x] 先写 `client/tests/test_transfer.cpp`（纯函数，无网络）：
 
 ```cpp
 #include <QtTest>
@@ -327,16 +327,18 @@ QTEST_MAIN(TestTransfer)
 #include "test_transfer.moc"
 ```
 
-- [ ] 写 `test_transfer.pro`（`QT += testlib`，`INCLUDEPATH += ../src/transfer`，`SOURCES += test_transfer.cpp ../src/transfer/transferutil.cpp`），跑测试，预期 4 条全过（先失败再实现）。
-- [ ] 实现 `UploadTask`：
+- [x] 写 `test_transfer.pro`（`QT += testlib`，`INCLUDEPATH += ../src/transfer`，`SOURCES += test_transfer.cpp ../src/transfer/transferutil.cpp`），跑测试，预期 4 条全过（先失败再实现）。
+  - 实测：先因 `transferutil.cpp/.h` 不存在而编译失败；实现后 `Totals: 6 passed, 0 failed`。
+- [x] 实现 `UploadTask`：
   - 状态：`Waiting / Hashing / Running / Paused / Verifying / Completed / Failed / Canceled`（与 PRD 3.2 对齐，`Hashing/Verifying` 对应"校验中"）；
   - `start()` → 启动 `HashWorker`（界面显示"校验中 45%"）→ `init` → 若 `instant=true` 直接 `Completed(instant=true)` → 否则按 `received` 过滤后顺序 PUT 分片 → `complete` → 比对服务端返回的 `sha256` 与本地一致；
   - `pause()`：置标志，当前分片响应到达后停，状态 `Paused`；`resume()`：重新 `init`（服务端返回同一 session 与 `received`），从缺失处分片继续；
   - `cancel()`：`DELETE /api/upload/{sid}`，删除任务；
   - 网络错误自动重试 3 次（间隔 1s/2s/4s），仍失败 → `Paused` 并带提示"网络中断，已暂停"；
   - 速度用 3 秒滑动窗口计算，进度信号 `progress(done, total, bytesPerSec)`。
-- [ ] `UploadTask` 不直接持有 token 副本，统一通过 `ApiClient::requestFor()` 取头，登出后旧任务应被 `cancel()`。
-- [ ] 编译并跑 `test_transfer.exe`，预期 `Totals: 4 passed, 0 failed`。
+- [x] `UploadTask` 不直接持有 token 副本，统一通过 `ApiClient::requestFor()` 取头，登出后旧任务应被 `cancel()`。
+- [x] 编译并跑 `test_transfer.exe`，预期 `Totals: 4 passed, 0 failed`。
+  - 实测：`Totals: 6 passed`（4 条用例 + init/cleanup）；另用临时无界面程序对真实服务端验证 4 种路径：5 MiB 新上传 Completed、同内容再传 `instant=true`、0 字节文件直接 complete、120 MiB 在 16 MiB 处 pause 后 resume 从 16 MiB 续传至 Completed。
 
 **安全说明：** 本地路径只用于读文件，不上传给服务端；服务端返回的最终名称才用于界面显示；分片内容不写日志。
 

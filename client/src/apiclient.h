@@ -28,6 +28,12 @@ public:
     // 目录列表 URL，供界面与测试直接复用。
     QString filesUrl(qlonglong parentId) const;
 
+    // 供上传等长任务自行发起请求：复用同一个网络管理器与鉴权头。
+    QNetworkAccessManager* manager() const;
+    // path 以 "/" 开头；自动带上 Content-Type 与 Authorization: Bearer。
+    QNetworkRequest requestFor(const QString& path,
+                               const QString& contentType = QStringLiteral("application/json")) const;
+
     // 把 HTTP 状态 + 错误响应体映射为可直接展示的中文提示。
     static QString errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err);
 

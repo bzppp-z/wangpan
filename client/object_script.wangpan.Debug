@@ -1,0 +1,13 @@
+debug/main.o
+debug/apiclient.o
+debug/transferutil.o
+debug/hashworker.o
+debug/uploadtask.o
+debug/theme.o
+debug/loginwindow.o
+debug/mainwindow.o
+debug/moc_apiclient.o
+debug/moc_hashworker.o
+debug/moc_uploadtask.o
+debug/moc_loginwindow.o
+debug/moc_mainwindow.o

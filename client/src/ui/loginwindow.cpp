@@ -439,6 +439,8 @@ void LoginWindow::handleLoginSucceeded(qint64 userId) {
     QSettings settings(QStringLiteral("Wangpan"), QStringLiteral("Client"));
     settings.setValue(QStringLiteral("login/lastUsername"), usernameEdit_->text().trimmed());
     settings.setValue(QStringLiteral("server/baseUrl"), api_->baseUrl());
+    passwordEdit_->clear();
+    confirmEdit_->clear();
     setBusy(false);
     emit loggedIn(api_->token(), userId);
     accept();

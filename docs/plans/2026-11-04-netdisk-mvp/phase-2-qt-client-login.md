@@ -167,14 +167,14 @@ mingw32-make -j4
 
 **步骤：**
 
-- [ ] 搭建 `QSplitter`：左侧 `QTreeView`（固定初宽 240）承载文件夹树，右侧为面包屑 `QHBoxLayout` + `QTableView` + 底部状态栏。
-- [ ] 文件列表用 `QStandardItemModel` 三列；`filesLoaded` 时清空重填：`kind=="folder"` 的行名称前加"📁"前缀（纯文本图标，避免引入图片资源），大小列对文件夹显示"—"；大小用 `B/KB/MB/GB` 保留一位小数。
-- [ ] 双击文件夹行：从该行 `Qt::UserRole` 取 `id`，调用 `listFiles(id)`，并更新面包屑为"我的网盘 / 文档 / …"；面包屑每一级按钮同样携带 `parent_id`，点击返回。
-- [ ] "新建文件夹"：`QInputDialog::getText`，非空才发请求；成功后用服务端返回的 `finalName` 刷列表并选中该行（服务端按 R2 可能已自动改名，客户端不要用自己提交的名称）。
-- [ ] "刷新"重新请求当前目录；"退出登录"调用 `logout()` 后关闭主窗口并重新显示登录窗。
-- [ ] 状态栏：`已用 {used} / 5.0 GB` + `QProgressBar`（范围 0–100，按 `used/quota` 计算，>100% 时钳到 100 并变红）。
-- [ ] 401 处理：`unauthorized()` 信号 → 弹提示"登录已过期，请重新登录" → 返回登录窗。
-- [ ] 编译运行，与服务端联调：
+- [x] 搭建 `QSplitter`：左侧 `QTreeView`（固定初宽 240）承载文件夹树，右侧为面包屑 `QHBoxLayout` + `QTableView` + 底部状态栏。
+- [x] 文件列表用 `QStandardItemModel` 三列；`filesLoaded` 时清空重填：`kind=="folder"` 的行名称前加"📁"前缀（纯文本图标，避免引入图片资源），大小列对文件夹显示"—"；大小用 `B/KB/MB/GB` 保留一位小数。
+- [x] 双击文件夹行：从该行 `Qt::UserRole` 取 `id`，调用 `listFiles(id)`，并更新面包屑为"我的网盘 / 文档 / …"；面包屑每一级按钮同样携带 `parent_id`，点击返回。
+- [x] "新建文件夹"：`QInputDialog::getText`，非空才发请求；成功后用服务端返回的 `finalName` 刷列表并选中该行（服务端按 R2 可能已自动改名，客户端不要用自己提交的名称）。
+- [x] "刷新"重新请求当前目录；"退出登录"调用 `logout()` 后关闭主窗口并重新显示登录窗。
+- [x] 状态栏：`已用 {used} / 5.0 GB` + `QProgressBar`（范围 0–100，按 `used/quota` 计算，>100% 时钳到 100 并变红）。
+- [x] 401 处理：`unauthorized()` 信号 → 弹提示"登录已过期，请重新登录" → 返回登录窗。
+- [x] 编译运行，与服务端联调：
   - 登录 alice → 列表空 → 新建"文档" → 列表出现"文档" → 双击进入 → 面包屑变"我的网盘 / 文档" → 刷新仍为空。
 
 **视觉验证：** 截图 `phase2-main-empty.png`、`phase2-main-folder.png`；在 1024×640 与 1366×768 两种尺寸下检查工具栏按钮不换行、面包屑不截断、状态栏不与进度条重叠。

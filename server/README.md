@@ -66,6 +66,23 @@ bash scripts/smoke.sh http://127.0.0.1:18080
 
 错误响应统一为 `{"error":"<code>","message":"<中文提示>"}`。
 
+## 回收站与清理
+
+| 方法与路径 | 鉴权 | 说明 |
+|---|---|---|
+| `PATCH /api/files/{id}` | Bearer | 重命名，同目录重名按 R2 追加 ` (N)`，返回最终名称 |
+| `DELETE /api/files/{id}` | Bearer | 软删除整棵子树（连同子项），不扣配额，204 |
+| `GET /api/trash` | Bearer | 回收站列表，只含"子树根"，带 `expires_at` |
+| `POST /api/trash/{id}/restore` | Bearer | 恢复子树根；原父目录不存在/已删除则回到根目录，重名按 R2 |
+| `DELETE /api/trash/{id}` | Bearer | 彻底删除子树，blob 引用计数 -1，释放配额，204 |
+| `DELETE /api/trash` | Bearer | 清空当前账户回收站，204 |
+
+- 删除是软删除：`deleted_at` 置为当前时间，条目仍计入 `used_bytes`；只有彻底删除才会减少配额。
+- 彻底删除在事务内先删 `files` 行、再对 blob `refcount - 1`，提交后才删除磁盘文件；单个文件删除失败只记 warning。
+- 30 天过期：`expires_at = deleted_at + 30d`。服务端启动时执行一次 `purge_expired()`，之后由 detached 后台线程每 6 小时执行一次（进程退出即结束），等价于对过期子树根做彻底删除。
+- 启动清理同时删除 `refcount = 0` 的孤儿 blob 行与磁盘文件，覆盖上传中断可能留下的残留。
+- 所有子树操作都带 `owner_id` 条件，跨账户访问一律 404。
+
 ## 约定与限制
 
 - 所有 POST 必须带 `Content-Length`（无内容时为 0）。cpp-httplib 对"无请求体且无 Content-Length"的 POST 会让连接停在读超时。

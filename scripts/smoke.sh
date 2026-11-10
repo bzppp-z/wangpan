@@ -446,5 +446,23 @@ check "trash empty after clear" 0 "$(curl -s "$BASE/api/trash" -H "Authorization
 check "clear 无 token 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   -X DELETE "$BASE/api/trash")"
 
+# ===== 恢复冲突：原位置已被同名条目占用时按 R2 改名 =====
+CONF_MK=$(curl -s -o /tmp/wp_conf_mk.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"冲突测试"}' "$BASE/api/folders")
+check "冲突测试文件夹 201" 201 "$CONF_MK"
+CONF_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/wp_conf_mk.json)
+check "删除 冲突测试 204" 204 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/files/$CONF_ID" -H "Authorization: Bearer $TOKEN")"
+CONF_MK2=$(curl -s -o /tmp/wp_conf_mk2.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"冲突测试"}' "$BASE/api/folders")
+check "重建同名文件夹 201" 201 "$CONF_MK2"
+check_grep "重建后名称未被占用" /tmp/wp_conf_mk2.json '"name":"冲突测试"'
+CONF_RESTORE=$(curl -s -o /tmp/wp_conf_restore.json -w '%{http_code}' --max-time 5 \
+  -X POST --data '' "$BASE/api/trash/$CONF_ID/restore" -H "Authorization: Bearer $TOKEN")
+check "冲突恢复 200" 200 "$CONF_RESTORE"
+check_grep "冲突恢复按 R2 改名" /tmp/wp_conf_restore.json '"name":"冲突测试 (1)"'
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

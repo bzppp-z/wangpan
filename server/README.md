@@ -37,6 +37,7 @@ cmake --build build-wsl -j
 | `--port` | 8080 | 监听端口，取值 1–65535 |
 | `--bind` | 127.0.0.1 | 监听地址，默认只允许本机访问 |
 | `--data-dir` | ./data | 数据目录，自动创建 |
+| `--quota-bytes` | 5368709120 | 单用户配额（字节），默认 5 GiB |
 
 启动时会自动建库并幂等建表，数据文件为 `<data-dir>/wangpan.db`（WAL 模式下还会有 `-wal`、`-shm`）。
 

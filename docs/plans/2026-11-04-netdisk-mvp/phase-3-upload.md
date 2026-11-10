@@ -85,19 +85,19 @@ namespace storage {
 
 **步骤：**
 
-- [ ] 先写 `server/tests/test_storage.cpp`（此时应编译失败）：
+- [x] 先写 `server/tests/test_storage.cpp`（此时应编译失败）：
   - 在临时目录写入 2 个分片（第 0 片全 `A` 4 MiB，第 1 片 1 MiB 全 `B`）；
   - `scan_received` 返回 `{0,1}`；
   - 删除第 1 片后再扫描返回 `{0}`；
   - `merge_and_hash` 输出的 sha 与 `crypto::sha256_hex(完整内容)` 一致，且 `out_path` 大小等于 5 MiB；
   - `commit_blob` 后 `blob_path(data_dir, sha)` 存在，内容与合并结果一致；
   - 同 sha 再提交一次（模拟两个账户同时传同一内容）不报错、不破坏已有文件。
-- [ ] 实现 `blob.cpp`：
+- [x] 实现 `blob.cpp`：
   - `write_chunk` 校验 `bytes.size() == expected_len`，写 `.tmp` → `rename`；
   - `scan_received` 从 0 到 `chunk_count-1` 检查 `<i>.chunk` 是否存在且大小等于该片应有长度；只读元信息，不读内容；
   - `merge_and_hash` 顺序读分片、拼接写入 `out_path`，同时用 OpenSSL `EVP_MD_CTX` 流式计算 SHA-256；任何分片缺失或大小不符返回错误；
   - `commit_blob`：目标路径已存在且大小一致 → 删除临时文件直接成功；否则 `rename`（跨目录时先 `rename` 到同目录临时名再落位）。
-- [ ] 在 `CMakeLists.txt` 增加测试目标并跑：
+- [x] 在 `CMakeLists.txt` 增加测试目标并跑：
 
 ```bash
 cmake --build build-wsl -j
@@ -105,6 +105,7 @@ ctest --test-dir build-wsl --output-on-failure
 ```
 
   - 预期：`schema` 与 `storage` 两个测试都 Passed。
+  - 实测：`schema` / `auth` / `storage` 三个测试全 Passed，`test_storage` 24 条断言 0 失败（额外覆盖了「长度不符的分片被拒绝且不留文件」「截断分片视为未收」「缺片合并失败并删除半截输出」）。
 
 **安全 / 边界说明：** 会话目录名与 blob 路径全部来自服务端生成；任何客户端字符串都不参与路径拼接。临时文件落在 `<data_dir>` 内，避免跨文件系统 `rename` 失败。
 

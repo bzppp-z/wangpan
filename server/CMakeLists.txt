@@ -13,6 +13,7 @@ set(APP_SOURCES
   src/db/users.cpp
   src/db/sessions.cpp
   src/db/files.cpp
+  src/storage/blob.cpp
   src/util/crypto.cpp
   src/api/auth.cpp
   src/api/files.cpp

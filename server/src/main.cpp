@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
     if (!parse_args(argc, argv, cfg, err)) {
         log_error(err);
         std::fprintf(stderr,
-                     "用法：%s [--port 8080] [--bind 127.0.0.1] [--data-dir ./data]\n",
+                     "用法：%s [--port 8080] [--bind 127.0.0.1] [--data-dir ./data]"
+                     " [--quota-bytes 5368709120]\n",
                      argv[0]);
         return 2;
     }

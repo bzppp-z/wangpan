@@ -12,6 +12,7 @@ client/**/release/
 client/**/debug/
 Makefile
 Makefile.*
+object_script.*
 target_wrapper.bat
 *.pro.user
 .qmake.stash

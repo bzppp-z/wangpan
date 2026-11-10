@@ -354,7 +354,7 @@ QTEST_MAIN(TestTransfer)
 - Modify：`client/src/ui/theme.h`（新增 `kProgressTrack "#EBEEF5"`、`kSuccess "#00B42A"`）
 - Modify：`client/wangpan.pro`
 
-**界面契约（本任务开工前用草图确认）：**
+**界面契约（草图：`docs/ui-mockups/phase-3-upload-status.html`，含上传中/完成/失败三种状态）：**
 
 | 项目 | 规格 |
 |---|---|
@@ -366,16 +366,18 @@ QTEST_MAIN(TestTransfer)
 
 **步骤：**
 
-- [ ] 递归上传：用 `QDirIterator(path, QDir::Files, QDirIterator::Subdirectories)` 收集文件；对每个文件计算相对目录，按层调用 `createFolder`，把"相对目录 → folder_id"存进 `QHash<QString, qlonglong>`；再逐个创建 `UploadTask`。
-- [ ] 顺序执行（本阶段同时只跑 1 个任务），每个任务结束（成功或失败）后启动下一个。
-- [ ] 拖拽事件 `dragEnterEvent` 接受 `text/uri-list`，`dropEvent` 把本地路径交给 `UploadController`。
-- [ ] 任务成功 → 若当前目录正是该任务的目标目录，则 `listFiles(currentId)` 刷新并选中；失败 → 按 `ApiClient::errorTextFor` 映射 507/400/413。
-- [ ] 手工验证：
+- [x] 递归上传：用 `QDirIterator(path, QDir::Files, QDirIterator::Subdirectories)` 收集文件；对每个文件计算相对目录，按层调用 `createFolder`，把"相对目录 → folder_id"存进 `QHash<QString, qlonglong>`；再逐个创建 `UploadTask`。实现放在 `UploadController`（`DirBatch` 按层级排序，父目录先建）。
+- [x] 顺序执行（本阶段同时只跑 1 个任务），每个任务结束（成功或失败）后启动下一个。
+- [x] 拖拽事件 `dragEnterEvent` 接受 `text/uri-list`，`dropEvent` 把本地路径交给 `UploadController`（整窗接收，拖到列表任意位置都生效）。
+- [x] 任务成功 → 若当前目录正是该任务的目标目录，则 `listFiles(currentId)` 刷新并选中；失败 → 按 `ApiClient::errorTextFor` 映射 507/400/413。
+- [x] 手工验证：
   - 上传单个 5 MB 文件 → 状态栏进度从 0 到 100，列表出现文件，配额增加 5 MB；
   - 上传含 3 层子目录的文件夹 → 目录结构与本地一致，空文件夹也被创建；
   - 上传过程中点"退出登录" → 当前任务被取消，无崩溃。
+  - 实测（仓库外用无界面程序驱动真实服务端，18083）：拖入 `作业/`（含 `说明.txt`、`a/b/c/deep.bin` 300 MB、空目录 `empty/`）→ 服务端建出 `作业 > a > b > c`、`作业 > empty`，文件分别落在 `作业/` 与 `作业/a/b/c/`；落盘 blob sha256 `17a88af8…2bf0` 与本地 `sha256sum` 一致；上传中截图状态栏为 `上传中 2 · deep.bin 6% · 14.4 MB/s`；完成后状态栏绿字 `上传完成：说明.txt` 并刷新列表。
+  - 实测（退出登录）：上传 300 MB 途中调用 `logout()`，进程正常退出（exit=0），服务端 `/tmp/wp-t4/tmp` 为空（会话已删除）。
 
-**视觉验证：** 截图 `docs/ui-shots/phase3-upload-running.png`、`phase3-upload-done.png`；确认状态栏摘要出现/消失时，右侧配额条位置不跳动。
+**视觉验证：** 截图 `docs/ui-shots/phase3-upload-running.png`、`phase3-upload-done.png`；确认状态栏摘要出现/消失时，右侧配额条位置不跳动（摘要与进度条都是紧贴配额条左侧的固定宽度控件，配额条锚定在最右）。
 
 ---
 

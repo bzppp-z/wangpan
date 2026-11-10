@@ -1,7 +1,11 @@
 #include "ui/mainwindow.h"
 
 #include <QAbstractItemView>
+#include <QAction>
 #include <QDateTime>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -10,7 +14,10 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLayoutItem>
+#include <QMenu>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QPoint>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -21,10 +28,12 @@
 #include <QTableView>
 #include <QTimer>
 #include <QTreeView>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "apiclient.h"
 #include "ui/theme.h"
+#include "ui/uploadcontroller.h"
 
 namespace {
 
@@ -52,6 +61,7 @@ QString formatTime(qint64 seconds) {
 MainWindow::MainWindow(ApiClient* api, QWidget* parent)
     : QMainWindow(parent),
       api_(api),
+      uploads_(nullptr),
       currentId_(0),
       currentItem_(nullptr),
       pendingSelectId_(0),
@@ -61,12 +71,22 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
       fileModel_(nullptr),
       breadcrumbLayout_(nullptr),
       statusLabel_(nullptr),
-      quotaBar_(nullptr) {
+      uploadLabel_(nullptr),
+      uploadBar_(nullptr),
+      quotaBar_(nullptr),
+      transientStatus_(false),
+      statusSeq_(0) {
     setWindowTitle(QStringLiteral("网盘"));
     resize(1100, 700);
     setMinimumSize(1024, 640);
+    setAcceptDrops(true);
 
     buildUi();
+
+    uploads_ = new UploadController(api_, this);
+    connect(uploads_, &UploadController::summaryChanged, this, &MainWindow::onUploadSummary);
+    connect(uploads_, &UploadController::taskFinished, this, &MainWindow::onUploadFinished);
+    connect(uploads_, &UploadController::taskFailed, this, &MainWindow::onFailed);
 
     connect(api_, &ApiClient::filesLoaded, this, &MainWindow::onFilesLoaded);
     connect(api_, &ApiClient::folderCreated, this, &MainWindow::onFolderCreated);
@@ -99,6 +119,24 @@ void MainWindow::buildUi() {
 
     statusLabel_ = new QLabel(this);
     statusLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
+
+    // 上传摘要：文字贴着自己的进度条，空闲时两者一起隐藏；配额条固定在最右侧，不随之跳动。
+    uploadLabel_ = new QLabel(this);
+    uploadLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px; margin-right:8px;")
+                                    .arg(theme::kText.name()));
+    uploadLabel_->hide();
+    uploadBar_ = new QProgressBar(this);
+    uploadBar_->setFixedSize(120, 12);
+    uploadBar_->setRange(0, 100);
+    uploadBar_->setValue(0);
+    uploadBar_->setTextVisible(false);
+    uploadBar_->setStyleSheet(
+        QStringLiteral("QProgressBar { background:%1; border:none; border-radius:6px; }"
+                       "QProgressBar::chunk { background:%2; border-radius:6px; }")
+            .arg(theme::kProgressTrack.name())
+            .arg(theme::kPrimary.name()));
+    uploadBar_->hide();
+
     quotaBar_ = new QProgressBar(this);
     quotaBar_->setFixedSize(120, 12);
     quotaBar_->setRange(0, 100);
@@ -109,6 +147,8 @@ void MainWindow::buildUi() {
                        "QProgressBar::chunk { background:%1; border-radius:6px; }")
             .arg(theme::kPrimary.name()));
     statusBar()->addWidget(statusLabel_, 1);
+    statusBar()->addPermanentWidget(uploadLabel_);
+    statusBar()->addPermanentWidget(uploadBar_);
     statusBar()->addPermanentWidget(quotaBar_);
     statusBar()->setStyleSheet(QStringLiteral("QStatusBar { background:#FFFFFF; border-top:1px solid #E5E6EB; }"
                                               "QStatusBar::item { border:none; }"));
@@ -147,11 +187,21 @@ QWidget* MainWindow::buildToolBar() {
             .arg(theme::kPrimaryPressed.name()));
     connect(newFolder, &QPushButton::clicked, this, &MainWindow::createFolder);
 
-    QPushButton* upload = new QPushButton(QStringLiteral("上传"), bar);
+    QPushButton* upload = new QPushButton(QStringLiteral("上传 ▾"), bar);
     upload->setFixedHeight(32);
-    upload->setEnabled(false);
-    upload->setToolTip(QStringLiteral("阶段 3 开放"));
+    upload->setCursor(Qt::PointingHandCursor);
     upload->setStyleSheet(secondaryStyle);
+    connect(upload, &QPushButton::clicked, this, [this, upload]() {
+        QMenu menu(this);
+        QAction* filesAction = menu.addAction(QStringLiteral("上传文件"));
+        QAction* folderAction = menu.addAction(QStringLiteral("上传文件夹"));
+        QAction* chosen = menu.exec(upload->mapToGlobal(QPoint(0, upload->height() + 4)));
+        if (chosen == filesAction) {
+            uploadFiles();
+        } else if (chosen == folderAction) {
+            uploadFolder();
+        }
+    });
 
     QPushButton* refreshButton = new QPushButton(QStringLiteral("刷新"), bar);
     refreshButton->setFixedHeight(32);
@@ -439,12 +489,85 @@ void MainWindow::createFolder() {
 }
 
 void MainWindow::logout() {
+    uploads_->cancelAll();
     api_->logout();
+}
+
+void MainWindow::uploadFiles() {
+    const QStringList paths = QFileDialog::getOpenFileNames(this, QStringLiteral("选择要上传的文件"));
+    if (!paths.isEmpty()) {
+        uploads_->addPaths(currentId_, paths);
+    }
+}
+
+void MainWindow::uploadFolder() {
+    const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择要上传的文件夹"));
+    if (!dir.isEmpty()) {
+        uploads_->addPaths(currentId_, QStringList() << dir);
+    }
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
+    if (event->mimeData()->hasUrls()) {
+        for (const QUrl& url : event->mimeData()->urls()) {
+            if (url.isLocalFile()) {
+                event->acceptProposedAction();
+                return;
+            }
+        }
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent* event) {
+    QStringList paths;
+    for (const QUrl& url : event->mimeData()->urls()) {
+        if (url.isLocalFile()) {
+            paths << url.toLocalFile();
+        }
+    }
+    if (paths.isEmpty()) {
+        return;
+    }
+    event->acceptProposedAction();
+    uploads_->addPaths(currentId_, paths);
+}
+
+void MainWindow::onUploadSummary(const QString& text, int percent) {
+    if (uploadLabel_ == nullptr || uploadBar_ == nullptr) {
+        return;
+    }
+    if (text.isEmpty()) {
+        uploadLabel_->hide();
+        uploadBar_->hide();
+        return;
+    }
+    uploadLabel_->setText(text);
+    uploadLabel_->show();
+    if (percent >= 0) {
+        uploadBar_->setValue(qBound(0, percent, 100));
+        uploadBar_->show();
+    } else {
+        uploadBar_->hide();
+    }
+}
+
+void MainWindow::onUploadFinished(qint64 fileId, qint64 targetParentId, const QString& finalName) {
+    showStatusMessage(QStringLiteral("上传完成：%1").arg(finalName), false);
+    if (targetParentId == currentId_) {
+        pendingSelectId_ = fileId;
+    }
+    // 无论是否在当前目录，都刷新一次以同步配额。
+    api_->listFiles(currentId_);
 }
 
 void MainWindow::updateQuota(qint64 usedBytes, qint64 quotaBytes) {
     usageText_ = QStringLiteral("已用 %1 / %2").arg(formatSize(usedBytes), formatSize(quotaBytes));
-    showStatusMessage(usageText_, false);
+    // 临时消息（完成/失败提示）展示期间不要被配额刷新覆盖。
+    if (!transientStatus_) {
+        statusLabel_->setText(usageText_);
+        statusLabel_->setStyleSheet(
+            QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
+    }
 
     int percent = 0;
     if (quotaBytes > 0) {
@@ -465,15 +588,19 @@ void MainWindow::showStatusMessage(const QString& message, bool error) {
     if (statusLabel_ == nullptr) {
         return;
     }
+    const int seq = ++statusSeq_;
+    transientStatus_ = true;
     statusLabel_->setText(message);
     statusLabel_->setStyleSheet(
         QStringLiteral("color:%1; font-size:12px;")
-            .arg(error ? theme::kErrorText.name() : theme::kTextMuted.name()));
-    if (error) {
-        QTimer::singleShot(3000, this, [this]() {
-            statusLabel_->setText(usageText_);
-            statusLabel_->setStyleSheet(
-                QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
-        });
-    }
+            .arg(error ? theme::kErrorText.name() : theme::kSuccess.name()));
+    QTimer::singleShot(3000, this, [this, seq]() {
+        if (seq != statusSeq_) {
+            return;
+        }
+        transientStatus_ = false;
+        statusLabel_->setText(usageText_);
+        statusLabel_->setStyleSheet(
+            QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
+    });
 }

@@ -141,6 +141,83 @@ std::string unique_name(long long owner_id, long long parent_id, const std::stri
     return make_candidate(desired_name, 100);
 }
 
+bool rename_file(long long owner_id, long long file_id, const std::string& desired_name,
+                 std::string& out_name, std::string& err) {
+    err.clear();
+    out_name.clear();
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        err = "数据库未打开";
+        return false;
+    }
+
+    std::string current_name;
+    {
+        const char* sql =
+            "SELECT name FROM files"
+            " WHERE id = ? AND owner_id = ? AND deleted_at IS NULL";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        sqlite3_bind_int64(stmt, 1, file_id);
+        sqlite3_bind_int64(stmt, 2, owner_id);
+        const int rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            current_name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        }
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_ROW) {
+            if (rc == SQLITE_DONE) {
+                err = "not_found";
+            } else {
+                err = sqlite3_errmsg(h);
+            }
+            return false;
+        }
+    }
+
+    // 名称未变化：既是无操作，也避免 unique_name 把自身算成冲突得到 "name (1)"。
+    if (current_name == truncate_utf8(desired_name, kMaxNameBytes)) {
+        out_name = current_name;
+        return true;
+    }
+
+    const long long now = now_seconds();
+    const char* sql = "UPDATE files SET name = ?, updated_at = ? WHERE id = ? AND owner_id = ?";
+    // 与 create_folder 一致：直接 UPDATE 并依赖唯一索引，冲突就换下一个候选名。
+    for (int i = 0; i < 100; ++i) {
+        const std::string candidate = make_candidate(desired_name, i);
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        sqlite3_bind_text(stmt, 1, candidate.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 2, now);
+        sqlite3_bind_int64(stmt, 3, file_id);
+        sqlite3_bind_int64(stmt, 4, owner_id);
+
+        const int rc = sqlite3_step(stmt);
+        const int extended = sqlite3_extended_errcode(h);
+        const std::string message = sqlite3_errmsg(h);
+        sqlite3_finalize(stmt);
+        if (rc == SQLITE_DONE) {
+            out_name = candidate;
+            return true;
+        }
+        if (extended == SQLITE_CONSTRAINT_UNIQUE || extended == SQLITE_CONSTRAINT_PRIMARYKEY) {
+            continue;  // 名称被占用，试下一个候选
+        }
+        err = message;
+        return false;
+    }
+
+    err = "同名项过多，无法生成新名称";
+    return false;
+}
+
 bool find_folder(long long owner_id, long long folder_id, std::string& out_name) {
     out_name.clear();
     if (folder_id == 0) {

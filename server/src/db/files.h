@@ -26,6 +26,12 @@ bool find_file(long long owner_id, long long file_id, Row& out);
 // 按 R2 生成不冲突的名称：name、name (1)、name (2)…；超过 255 字符时截断原名保留后缀。
 std::string unique_name(long long owner_id, long long parent_id, const std::string& desired_name);
 
+// 重命名单个条目（文件或文件夹），保持原父目录不变。
+// 仅允许当前账户下未删除的条目；不存在 / 越权 / 已在回收站时返回 false 且 err = "not_found"。
+// 同名项已存在时按 R2 自动追加 (1)(2)…，最终名称通过 out_name 返回。
+bool rename_file(long long owner_id, long long file_id, const std::string& desired_name,
+                 std::string& out_name, std::string& err);
+
 // 查询当前用户名下的文件夹；folder_id = 0 视为根目录，恒为 true。
 bool find_folder(long long owner_id, long long folder_id, std::string& out_name);
 

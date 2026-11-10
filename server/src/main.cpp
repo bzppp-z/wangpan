@@ -9,6 +9,7 @@
 #include "api/auth.h"
 #include "api/download.h"
 #include "api/files.h"
+#include "api/manage.h"
 #include "api/preview.h"
 #include "api/respond.h"
 #include "api/upload.h"
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
 
     auth::register_routes(svr, cfg.quota_bytes);
     api_files::register_routes(svr);
+    api_manage::register_routes(svr);
     api_upload::register_routes(svr, cfg);
     api_download::register_routes(svr, cfg);
     api_preview::register_routes(svr, cfg);

@@ -18,6 +18,7 @@ set(APP_SOURCES
   src/util/crypto.cpp
   src/api/auth.cpp
   src/api/files.cpp
+  src/api/manage.cpp
   src/api/upload.cpp
   src/api/download.cpp
   src/api/preview.cpp
@@ -56,3 +57,9 @@ add_test(NAME instant COMMAND test_instant)
 add_executable(test_range tests/test_range.cpp)
 target_include_directories(test_range PRIVATE src third_party)
 add_test(NAME range COMMAND test_range)
+
+add_executable(test_trash tests/test_trash.cpp
+  src/db/db.cpp src/db/users.cpp src/db/blobs.cpp src/db/files.cpp)
+target_include_directories(test_trash PRIVATE src third_party)
+target_link_libraries(test_trash PRIVATE SQLite::SQLite3 Threads::Threads)
+add_test(NAME trash COMMAND test_trash)

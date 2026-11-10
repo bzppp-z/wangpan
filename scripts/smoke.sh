@@ -354,5 +354,29 @@ check "cross account preview 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' 
 check "无 token 预览 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   "$BASE/api/files/$PNG_FID/preview")"
 
+# ===== 重命名 =====
+rn=$(curl -s -o /tmp/wp_rn.json -w '%{http_code}' --max-time 5 -X PATCH "$BASE/api/files/$fid" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"renamed.bin"}')
+check "rename 200" 200 "$rn"
+check_grep "rename result" /tmp/wp_rn.json '"name":"renamed.bin"'
+
+curl -s -o /tmp/wp_rn_list.json --max-time 5 "$BASE/api/files?parent_id=0" \
+  -H "Authorization: Bearer $TOKEN"
+check_grep "rename visible in list" /tmp/wp_rn_list.json '"name":"renamed.bin"'
+
+check "rename invalid name 400" 400 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X PATCH "$BASE/api/files/$fid" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"a/b"}')"
+check "rename missing 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X PATCH "$BASE/api/files/999999" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"x.bin"}')"
+check "cross account rename 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X PATCH "$BASE/api/files/$fid" -H "Authorization: Bearer $BTOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"stolen.bin"}')"
+check "无 token 重命名 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X PATCH "$BASE/api/files/$fid" -H 'Content-Type: application/json' \
+  -d '{"name":"x.bin"}')"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

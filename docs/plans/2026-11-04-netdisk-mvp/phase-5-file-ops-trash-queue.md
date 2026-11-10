@@ -44,9 +44,9 @@
 
 **步骤：**
 
-- [ ] `test_trash.cpp` 先写：创建用户 → 新建 `a.txt` → `rename_file` 为 `b.txt` 成功 → 再建一个 `a.txt` → 把 `b.txt` 改名为 `a.txt`，预期得到 `a (1).txt`；对已软删除的条目改名返回失败（此时软删除还没实现，先跳过这条，Task 2 补）。
-- [ ] 实现 `PATCH /api/files/{id}`：鉴权 → 查询归属且 `deleted_at IS NULL` → 校验名称 → 同父目录下按 R2 取唯一名 → 事务内 `UPDATE files SET name=?, updated_at=?` → 200 返回最终名称。
-- [ ] 冒烟追加：
+- [x] `test_trash.cpp` 先写：创建用户 → 新建 `a.txt` → `rename_file` 为 `b.txt` 成功 → 再建一个 `a.txt` → 把 `b.txt` 改名为 `a.txt`，预期得到 `a.txt (1)`（沿用项目既有 R2 规则：后缀加在完整名称后）；对已软删除的条目改名返回失败（直接改库模拟回收站状态）。
+- [x] 实现 `PATCH /api/files/{id}`：鉴权 → 查询归属且 `deleted_at IS NULL` → 校验名称 → 同父目录下按 R2 取唯一名 → 事务内 `UPDATE files SET name=?, updated_at=?` → 200 返回最终名称。
+- [x] 冒烟追加：
 
 ```bash
 rn=$(curl -s -o /tmp/wp_rn.json -w '%{http_code}' -X PATCH "$BASE/api/files/$fid" \
@@ -56,7 +56,7 @@ check "rename 200" 200 "$rn"
 check_grep "rename result" /tmp/wp_rn.json '"name":"renamed.bin"'
 ```
 
-- [ ] 编译跑 `ctest`，`trash` 测试中重命名部分通过（此时整个测试文件尚未完整，允许后续任务继续补断言）。
+- [x] 编译跑 `ctest`，`trash` 测试中重命名部分通过（此时整个测试文件尚未完整，允许后续任务继续补断言）。
 
 **安全说明：** 只改数据库名称，磁盘路径与 blob 完全不动；越权统一 404。
 

@@ -21,6 +21,7 @@ void handle_login(const httplib::Request& req, httplib::Response& res);
 void handle_logout(const httplib::Request& req, httplib::Response& res);
 
 // 注册 /api/register、/api/login、/api/logout。
-void register_routes(httplib::Server& svr);
+// quota_bytes 为新账户的配额（当前固定 5 GiB，来自 Config）。
+void register_routes(httplib::Server& svr, long long quota_bytes);
 
 }  // namespace auth

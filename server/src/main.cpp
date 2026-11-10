@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "api/auth.h"
 #include "api/respond.h"
 #include "config.h"
 #include "db/db.h"
@@ -99,6 +100,8 @@ int main(int argc, char** argv) {
         body["version"] = "0.1";
         api::json_ok(res, body);
     });
+
+    auth::register_routes(svr, cfg.quota_bytes);
 
     log_info("监听地址 http://" + cfg.bind_addr + ":" + std::to_string(cfg.port));
     log_info("数据目录 " + cfg.data_dir);

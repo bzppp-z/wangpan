@@ -292,7 +292,7 @@ int main() {
 }
 ```
 
-- [ ] 在 `CMakeLists.txt` 追加（与 `test_schema` 并列）：
+- [x] 在 `CMakeLists.txt` 追加（与 `test_schema` 并列）：
 
 ```cmake
 add_executable(test_auth tests/test_auth.cpp
@@ -302,40 +302,35 @@ target_link_libraries(test_auth PRIVATE SQLite::SQLite3 OpenSSL::Crypto Threads:
 add_test(NAME auth COMMAND test_auth)
 ```
 
-- [ ] 跑 `ctest`，确认 `auth` 为 Failed（`open memory db` 等前几条可能已 PASS，`valid token resolves` 起应失败），提交第 1 个 commit。
+- [x] 跑 `ctest`，确认 `auth` 为 Failed（`open memory db` 等前几条可能已 PASS，`valid token resolves` 起应失败），提交第 1 个 commit。
 
-- [ ] 然后追加 `scripts/smoke.sh` 用例（与单元测试互补，验证 HTTP 路线）：
+- [x] 然后追加 `scripts/smoke.sh` 用例（与单元测试互补，验证 HTTP 路线）。实现后的账户段共 11 条断言，模式如下，完整内容见 `scripts/smoke.sh`：
 
 ```bash
-rg=$(curl -s -o /tmp/wp_reg.json -w '%{http_code}' -X POST "$BASE/api/register" \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"pass12345"}')
-check "register 201" 201 "$rg"
-token=$(sed -n 's/.*"token":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_reg.json)
-dup=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/register" \
-  -H 'Content-Type: application/json' -d '{"username":"alice","password":"pass12345"}')
-check "duplicate register 409" 409 "$dup"
-bad=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/login" \
-  -H 'Content-Type: application/json' -d '{"username":"alice","password":"wrong1234"}')
-check "login wrong password 401" 401 "$bad"
-noauth=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/files")
-check "files without token 401" 401 "$noauth"
+Code=$(curl -s -o /tmp/wp_reg.json -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"alice12345"}' "$BASE/api/register")
+check "register alice 201" 201 "$Code"
+TOKEN=$(sed -n 's/.*"token":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_reg.json)
+check "register token 64 位" 64 "${#TOKEN}"
+# …重名 409、密码错误 401、登录 200、登出 204、登出后 401、密码过短 400、
+#   用户名过短 400、请求体过大 413
 ```
 
-- [ ] 写 `crypto.h/.cpp`：
+- [x] 写 `crypto.h/.cpp`：
   - `pbkdf2_sha256(password, salt, iterations=100000, dklen=32)` → hex；salt 为 32 字节随机数转 hex；
   - `random_hex(byte_len)` 用 `RAND_bytes`；
   - `sha256_hex(bytes)` 供 token 哈希与后续内容校验复用。
   - 注意：PBKDF2 用 `PKCS5_PBKDF2_HMAC`（OpenSSL），迭代次数写成常量便于后续调参。
-- [ ] 实现注册：校验 → 查重 → 生成 salt/hash → 插入用户 → 建会话 → 201。
-- [ ] 实现登录：按用户名查 → PBKDF2 比对（`CRYPTO_memcmp` 定长比较）→ 建会话 → 200；账号不存在与密码错误**返回同一个 401**，不泄露账号是否存在。
-- [ ] 实现鉴权中间件：`auth::resolve(req, out_user_id)` 解析 `Bearer`，查 `sessions` 并校验 `expires_at > now`；失败返回 401 `{"error":"unauthorized"}`。
-- [ ] 实现登出：删除当前 token 对应的会话记录 → 204。
-- [ ] 编译、重启服务端、跑 `ctest` 与 `scripts/smoke.sh`
+- [x] 实现注册：校验 → 查重 → 生成 salt/hash → 插入用户 → 建会话 → 201。
+- [x] 实现登录：按用户名查 → PBKDF2 比对（`CRYPTO_memcmp` 定长比较）→ 建会话 → 200；账号不存在与密码错误**返回同一个 401**，不泄露账号是否存在。
+- [x] 实现鉴权中间件：`auth::resolve(req, out_user_id)` 解析 `Bearer`，查 `sessions` 并校验 `expires_at > now`；失败返回 401 `{"error":"unauthorized"}`。
+- [x] 实现登出：删除当前 token 对应的会话记录 → 204。
+- [x] 编译、重启服务端、跑 `ctest` 与 `scripts/smoke.sh`
   - `ctest` 预期：`schema`、`auth` 两个测试全部 Passed；
-  - 冒烟预期：register 201 / duplicate 409 / wrong password 401 全部 PASS。
-  - 其中 `files without token 401` 这一条此时仍是 FAIL（`/api/files` 属于 Task 4），Task 4 完成后转绿，属预期。
-- [ ] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
+  - 冒烟预期：13 条断言全部 PASS。
+- [x] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
+
+**实测发现（已写入 `scripts/smoke.sh` 注释）：** cpp-httplib 对"没有请求体、也没有 `Content-Length`"的 POST 会让连接停在读超时（handler 已执行但客户端收不到响应）。因此约定：**所有 POST 必须带 `Content-Length`（无内容时为 0）**；`curl` 用 `--data ''`，Qt 的 `QNetworkAccessManager::post` 默认就会带 `Content-Length: 0`，无需特殊处理。`/api/files` 的无 token 401 断言挪到 Task 4（该接口在 Task 4 才存在），避免本阶段留下预期的红灯。
 
 **安全 / 边界说明：** 数据库中只存 salt 与 PBKDF2 结果，不存明文；日志只记录用户名与结果码，不记录密码和 token；登录失败的响应体与耗时不做区分（不存在与密码错误走同一分支）。
 
@@ -364,6 +359,8 @@ check "files without token 401" 401 "$noauth"
 - [ ] 在 `scripts/smoke.sh` 追加用例（先失败）：
 
 ```bash
+noauth=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/files?parent_id=0")
+check "files without token 401" 401 "$noauth"
 create=$(curl -s -o /tmp/wp_mk.json -w '%{http_code}' -X POST "$BASE/api/folders" \
   -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
   -d '{"parent_id":0,"name":"文档"}')

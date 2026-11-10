@@ -439,6 +439,9 @@ void LoginWindow::handleLoginSucceeded(qint64 userId) {
     QSettings settings(QStringLiteral("Wangpan"), QStringLiteral("Client"));
     settings.setValue(QStringLiteral("login/lastUsername"), usernameEdit_->text().trimmed());
     settings.setValue(QStringLiteral("server/baseUrl"), api_->baseUrl());
+    // 回到账号登录态：登出后再次打开直接看到登录表单。
+    setMode(LoginMode);
+    clearError();
     passwordEdit_->clear();
     confirmEdit_->clear();
     setBusy(false);

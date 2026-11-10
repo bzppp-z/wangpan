@@ -69,7 +69,7 @@
 **文件：** [phase-2-qt-client-login.md](phase-2-qt-client-login.md)
 **目标：** 客户端能配置服务器地址、登录/注册、展示目录列表并进入子目录；与服务端联调通过。
 **任务：** 5
-**状态：** Not Started
+**状态：** Done
 
 ### 阶段 3：上传（分片、断点续传、秒传、配额）
 **文件：** [phase-3-upload.md](phase-3-upload.md)

@@ -215,22 +215,22 @@ mingw32-make -j4
 
 **步骤：**
 
-- [ ] `QSettings` 键固定为 `server/baseUrl`、`login/lastUsername`；启动时读回并填入登录窗；确认关闭再打开后仍生效。
-- [ ] 写 `client/README.md`：环境变量 PATH 设置、qmake 与 mingw32-make 命令、Qt Creator 打开方式（打开 `client/wangpan.pro`，选 Desktop Qt 5.12.11 MinGW 64-bit 套件，直接运行）、服务器地址修改方式、已知限制（HTTP 明文）。
-- [ ] 完整验收：服务端在 WSL 启动 → 客户端登录 → 新建文件夹 → 进入 → 退出登录 → 重新登录仍能看到该文件夹。
-- [ ] 截图汇总：确认 `docs/ui-shots/` 下 5 张截图齐全，且与设计契约一致（颜色、尺寸、状态）。
+- [x] `QSettings` 键固定为 `server/baseUrl`、`login/lastUsername`；启动时读回并填入登录窗；确认关闭再打开后仍生效。
+- [x] 写 `client/README.md`：环境变量 PATH 设置、qmake 与 mingw32-make 命令、Qt Creator 打开方式（打开 `client/wangpan.pro`，选 Desktop Qt 5.12.11 MinGW 64-bit 套件，直接运行）、服务器地址修改方式、已知限制（HTTP 明文）。
+- [x] 完整验收：服务端在 WSL 启动 → 客户端登录 → 新建文件夹 → 进入 → 退出登录 → 重新登录仍能看到该文件夹。
+- [x] 截图汇总：确认 `docs/ui-shots/` 下 5 张截图齐全，且与设计契约一致（颜色、尺寸、状态）。
 
 ---
 
 ## 阶段完成清单
 
-- [ ] 5 个任务全部完成
-- [ ] `test_apiclient.exe` 5 条用例全过
-- [ ] 登录、注册、错误提示、加载态按契约工作
-- [ ] 目录列表、进入子目录、新建文件夹、退出登录全部联调通过
-- [ ] 1024×640 与 1366×768 下无换行、遮挡、截断
-- [ ] 5 张截图归档在 `docs/ui-shots/`
-- [ ] 客户端未保存密码，未引入任何第三方品牌素材
+- [x] 5 个任务全部完成
+- [x] `test_apiclient.exe` 5 条用例全过
+- [x] 登录、注册、错误提示、加载态按契约工作
+- [x] 目录列表、进入子目录、新建文件夹、退出登录全部联调通过
+- [x] 1024×640 与 1366×768 下无换行、遮挡、截断
+- [x] 5 张截图归档在 `docs/ui-shots/`
+- [x] 客户端未保存密码，未引入任何第三方品牌素材
 
 ## 回滚
 

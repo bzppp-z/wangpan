@@ -25,6 +25,16 @@ private slots:
         QCOMPARE(c.errorTextFor(401, "{\"error\":\"unauthorized\"}", QNetworkReply::NoError),
                  QString("登录已过期，请重新登录"));
     }
+    void mapsPayloadTooLarge() {
+        ApiClient c;
+        QCOMPARE(c.errorTextFor(413, "{\"error\":\"payload_too_large\"}", QNetworkReply::NoError),
+                 QString("内容过大，请检查输入"));
+    }
+    void mapsServerError() {
+        ApiClient c;
+        QCOMPARE(c.errorTextFor(500, "", QNetworkReply::NoError),
+                 QString("服务器内部错误，请稍后重试"));
+    }
 };
 QTEST_MAIN(TestApiClient)
 #include "test_apiclient.moc"

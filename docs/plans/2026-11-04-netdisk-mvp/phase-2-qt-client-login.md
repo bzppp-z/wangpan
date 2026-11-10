@@ -192,14 +192,14 @@ mingw32-make -j4
 
 **步骤：**
 
-- [ ] 为所有请求设置 10 秒超时（`QNetworkRequest` + `QTimer` 或 `reply->setProperty` 计时），超时提示"请求超时，请检查网络"。
-- [ ] 在 `test_apiclient.cpp` 追加用例：`errorTextFor(413, "{\"error\":\"payload_too_large\"}", QNetworkReply::NoError)` 期望"内容过大，请检查输入"；`errorTextFor(500, "", QNetworkReply::NoError)` 期望"服务器内部错误，请稍后重试"。先运行，预期失败，再实现映射。
-- [ ] 手工验证清单（逐项打勾）：
+- [x] 为所有请求设置 10 秒超时（`QNetworkRequest` + `QTimer` 或 `reply->setProperty` 计时），超时提示"请求超时，请检查网络"。
+- [x] 在 `test_apiclient.cpp` 追加用例：`errorTextFor(413, "{\"error\":\"payload_too_large\"}", QNetworkReply::NoError)` 期望"内容过大，请检查输入"；`errorTextFor(500, "", QNetworkReply::NoError)` 期望"服务器内部错误，请稍后重试"。先运行，预期失败，再实现映射。
+- [x] 手工验证清单（逐项打勾）：
   - 停掉服务端后点"刷新"→ 状态栏"无法连接服务器，请检查地址"，界面不卡死；
   - 用 alice 登录后，停止服务端并删除 `/tmp/wp-test/wangpan.db`（会话与账户一并清空，等价于 token 失效），重启服务端 → 点刷新 → 服务端返回 401 → 客户端提示"登录已过期"并回登录窗；
   - 新建同名文件夹两次 → 第二次列表出现"文档 (1)"（服务端按 R2 自动改名，不报错）；
   - 用户名输入 2 个字符点注册 → 提示"用户名需 3–20 个字符"（客户端与服务端提示一致）。
-- [ ] 运行测试，确认 5 条用例全过。
+- [x] 运行测试，确认 5 条用例全过。
 
 **安全说明：** 错误提示只展示服务端 `message` 或预设文案，不展示原始 JSON、URL 带 token、堆栈信息。
 

@@ -3,9 +3,13 @@
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
+#include <QTimer>
 #include <QUrl>
 
 namespace {
+
+// 所有请求的统一超时：超过后主动 abort，避免界面无限等待。
+const int kTimeoutMs = 10000;
 
 // 取出错误响应体里的中文 message；非 JSON 或没有 message 时返回空串。
 QString messageFromBody(const QString& body) {
@@ -54,6 +58,7 @@ QString ApiClient::errorTextFor(int status, const QString& body, QNetworkReply::
             case QNetworkReply::NetworkSessionFailedError:
                 return QStringLiteral("无法连接服务器，请检查地址");
             case QNetworkReply::TimeoutError:
+            case QNetworkReply::OperationCanceledError:
                 return QStringLiteral("请求超时，请检查网络");
             default:
                 return QStringLiteral("网络异常，请稍后重试");
@@ -64,10 +69,18 @@ QString ApiClient::errorTextFor(int status, const QString& body, QNetworkReply::
     if (!message.isEmpty()) {
         return message;
     }
-    if (status == 401) {
-        return QStringLiteral("登录已过期，请重新登录");
+    switch (status) {
+        case 401:
+            return QStringLiteral("登录已过期，请重新登录");
+        case 413:
+            return QStringLiteral("内容过大，请检查输入");
+        case 500:
+        case 502:
+        case 503:
+            return QStringLiteral("服务器内部错误，请稍后重试");
+        default:
+            return QStringLiteral("请求失败（HTTP %1）").arg(status);
     }
-    return QStringLiteral("请求失败（HTTP %1）").arg(status);
 }
 
 void ApiClient::login(const QString& username, const QString& password) {
@@ -138,6 +151,10 @@ QNetworkRequest ApiClient::makeRequest(const QString& path) const {
 void ApiClient::sendGet(const QNetworkRequest& req, bool sessionEndpoint,
                         const std::function<void(const QJsonObject&)>& onSuccess) {
     QNetworkReply* reply = nam_->get(req);
+    QTimer* timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, &QNetworkReply::abort);
+    timeout->start(kTimeoutMs);
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, sessionEndpoint, onSuccess]() { finish(reply, sessionEndpoint, onSuccess); });
 }
@@ -146,6 +163,10 @@ void ApiClient::sendPost(const QNetworkRequest& req, const QByteArray& body, boo
                          const std::function<void(const QJsonObject&)>& onSuccess) {
     // 显式传 body（甚至空体），保证请求带 Content-Length：cpp-httplib 等待无长度 POST 会卡到超时。
     QNetworkReply* reply = nam_->post(req, body);
+    QTimer* timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, &QNetworkReply::abort);
+    timeout->start(kTimeoutMs);
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, sessionEndpoint, onSuccess]() { finish(reply, sessionEndpoint, onSuccess); });
 }

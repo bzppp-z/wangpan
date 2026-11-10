@@ -20,6 +20,7 @@ set(APP_SOURCES
   src/api/files.cpp
   src/api/upload.cpp
   src/api/download.cpp
+  src/api/preview.cpp
 )
 
 add_executable(wangpan_server ${APP_SOURCES})

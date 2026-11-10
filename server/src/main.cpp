@@ -9,6 +9,7 @@
 #include "api/auth.h"
 #include "api/download.h"
 #include "api/files.h"
+#include "api/preview.h"
 #include "api/respond.h"
 #include "api/upload.h"
 #include "config.h"
@@ -111,6 +112,7 @@ int main(int argc, char** argv) {
     api_files::register_routes(svr);
     api_upload::register_routes(svr, cfg);
     api_download::register_routes(svr, cfg);
+    api_preview::register_routes(svr, cfg);
 
     // cpp-httplib 自带的 Range 处理会把"终点越界"判成 416，多区间还会拼 multipart，
     // 与下载接口的契约（越界截断、只接受单区间）不符。这里清掉框架的解析结果，

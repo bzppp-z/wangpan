@@ -1,4 +1,4 @@
-# 阶段 4：下载（断点续传）与在线预览
+﻿# 阶段 4：下载（断点续传）与在线预览
 
 **目标：** 文件能下到本地，断了能接着下，下完内容与服务器一致；图片与文本可在主界面右侧预览面板直接查看，不落盘。
 **前置条件：** 阶段 3 完成（已有真实文件条目与 blob）。
@@ -97,14 +97,14 @@ check "bad range 416" 416 "$(curl -s -o /dev/null -w '%{http_code}' \
 
 **步骤：**
 
-- [ ] 写 `util/mime.h`：`const char* mime_for_extension(const std::string& lower_ext)`，返回 `nullptr` 表示不支持。
-- [ ] 实现 `GET /api/files/{id}/preview`：
+- [x] 写 `util/mime.h`：`const char* mime_for_extension(const std::string& lower_ext)`，返回 `nullptr` 表示不支持。
+- [x] 实现 `GET /api/files/{id}/preview`：
   - 归属与 `deleted_at IS NULL` 校验（同下载）；
   - 取扩展名（最后一个 `.` 之后，转小写）→ 白名单判定；不支持 → 415 `preview_unsupported`；
   - 文本：`length = min(size, 1 MiB)`，`X-Truncated: 1`（当 size > 1 MiB）；`set_content_provider(length, "text/plain; charset=utf-8", ...)`；
   - 图片：`set_content_provider(size, mime, ...)`；
   - 两种都带 `X-Content-Type-Options: nosniff`、`X-Content-SHA256`。
-- [ ] 追加冒烟断言：
+- [x] 追加冒烟断言：
 
 ```bash
 # 2 MiB 文本：应截断到 1 MiB
@@ -119,7 +119,7 @@ check "unsupported pdf 415" 415 "$(curl -s -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer $token" "$BASE/api/files/$pdf_fid/preview")"
 ```
 
-- [ ] 图片预览：用 1×1 PNG（`printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' | base64 -d > /tmp/one.png`）上传后预览，断言 `Content-Type: image/png` 且字节数等于原文件。
+- [x] 图片预览：用 1×1 PNG（`printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' | base64 -d > /tmp/one.png`）上传后预览，断言 `Content-Type: image/png` 且字节数等于原文件。
 
 **安全 / 边界说明：** 预览不落临时文件（PRD R5）；文本按字节截断，可能出现半个 UTF-8 字符，客户端按原样显示即可，不做二次解码猜测。
 

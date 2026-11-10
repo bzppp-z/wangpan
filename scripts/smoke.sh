@@ -302,5 +302,57 @@ check "不存在文件 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-
 check "无 token 下载 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   "$BASE/api/files/$fid/content")"
 
+# ===== 预览：文本截断 / 图片 / 非白名单 =====
+# 单分片（< 4 MiB）文件的一站式上传，供预览用例复用。
+upload_small() { # 本地路径 远程名 结果变量名
+  local path="$1" name="$2" out_var="$3" size sha sid
+  size=$(stat -c %s "$path")
+  sha=$(sha256sum "$path" | cut -d' ' -f1)
+  curl -s -o /tmp/wp_prev_init.json --max-time 5 -X POST "$BASE/api/upload/init" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d "{\"parent_id\":0,\"name\":\"$name\",\"size\":$size,\"sha256\":\"$sha\"}"
+  sid=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_prev_init.json)
+  curl -s -o /dev/null --max-time 20 -X PUT "$BASE/api/upload/$sid/chunks/0" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/octet-stream' \
+    --data-binary @"$path"
+  curl -s -o /tmp/wp_prev_done.json --max-time 20 -X POST --data '' \
+    "$BASE/api/upload/$sid/complete" -H "Authorization: Bearer $TOKEN"
+  eval "$out_var=$(sed -n 's/.*\"file_id\":\([0-9]*\).*/\1/p' /tmp/wp_prev_done.json)"
+}
+
+dd if=/dev/urandom of=/tmp/wp_text.bin bs=1M count=2 status=none
+upload_small /tmp/wp_text.bin big.txt TEXT_FID
+check "text 上传得到 id" 1 "$([ -n "$TEXT_FID" ] && echo 1 || echo 0)"
+
+PREV=$(curl -s -o /tmp/wp_prev.bin -D /tmp/wp_prev_hdr.txt -w '%{http_code}' --max-time 20 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/api/files/$TEXT_FID/preview")
+check "text preview 200" 200 "$PREV"
+check "text preview truncated size" 1048576 "$(stat -c %s /tmp/wp_prev.bin)"
+check_grep "truncated header" /tmp/wp_prev_hdr.txt 'X-Truncated: 1'
+check_grep "text content-type" /tmp/wp_prev_hdr.txt 'Content-Type: text/plain; charset=utf-8'
+check_grep "preview nosniff" /tmp/wp_prev_hdr.txt 'X-Content-Type-Options: nosniff'
+
+printf '%%PDF-1.4\nnot really a pdf\n' > /tmp/wp_doc.pdf
+upload_small /tmp/wp_doc.pdf doc.pdf PDF_FID
+check "unsupported pdf 415" 415 "$(curl -s -o /tmp/wp_prev_pdf.json -w '%{http_code}' \
+  --max-time 5 -H "Authorization: Bearer $TOKEN" "$BASE/api/files/$PDF_FID/preview")"
+check_grep "415 错误码" /tmp/wp_prev_pdf.json 'preview_unsupported'
+
+printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' \
+  | base64 -d > /tmp/wp_one.png
+upload_small /tmp/wp_one.png one.png PNG_FID
+PNG=$(curl -s -o /tmp/wp_prev_png.bin -D /tmp/wp_prev_png_hdr.txt -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/api/files/$PNG_FID/preview")
+check "png preview 200" 200 "$PNG"
+check_grep "png content-type" /tmp/wp_prev_png_hdr.txt 'Content-Type: image/png'
+check "png preview 原样返回" "$(stat -c %s /tmp/wp_one.png)" "$(stat -c %s /tmp/wp_prev_png.bin)"
+check "png preview sha" "$(sha256sum /tmp/wp_one.png | cut -d' ' -f1)" \
+  "$(sha256sum /tmp/wp_prev_png.bin | cut -d' ' -f1)"
+
+check "cross account preview 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $BTOKEN" "$BASE/api/files/$PNG_FID/preview")"
+check "无 token 预览 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  "$BASE/api/files/$PNG_FID/preview")"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

@@ -16,6 +16,8 @@ extern const QColor kErrorText;        // #E64545
 extern const QColor kErrorBg;          // #FFF1F0
 extern const QColor kSuccess;          // #00B42A
 extern const QColor kProgressTrack;    // #EBEEF5
+extern const QColor kPanelBg;          // #FAFBFC
+extern const QColor kPanelBorder;      // #E5E6EB
 extern const QColor kBrandFrom;        // #F5F8FF
 extern const QColor kBrandTo;          // #EAF2FF
 

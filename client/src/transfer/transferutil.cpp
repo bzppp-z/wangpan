@@ -1,6 +1,26 @@
 #include "transferutil.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+
 namespace TransferUtil {
+
+namespace {
+
+// 远程文件名只作为建议名：分隔符与控制字符不能带进本地路径。
+QString safeName(const QString& name) {
+    QString out = name;
+    out.replace(QLatin1Char('/'), QLatin1Char('_'));
+    out.replace(QLatin1Char('\\'), QLatin1Char('_'));
+    out = out.trimmed();
+    if (out.isEmpty() || out == QStringLiteral(".") || out == QStringLiteral("..")) {
+        return QStringLiteral("download");
+    }
+    return out;
+}
+
+}  // namespace
 
 qint64 chunkCount(qint64 size, qint64 chunkSize) {
     if (size <= 0 || chunkSize <= 0) {
@@ -50,6 +70,53 @@ qint64 etaSeconds(qint64 remainingBytes, qint64 bytesPerSec) {
         return 0;
     }
     return remainingBytes / bytesPerSec;
+}
+
+QString formatEta(qint64 seconds) {
+    if (seconds <= 0) {
+        return QStringLiteral("00:00");
+    }
+    const qint64 hours = seconds / 3600;
+    const qint64 minutes = (seconds % 3600) / 60;
+    const qint64 secs = seconds % 60;
+    if (hours > 0) {
+        return QStringLiteral("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(secs, 2, 10, QLatin1Char('0'));
+    }
+    return QStringLiteral("%1:%2")
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(secs, 2, 10, QLatin1Char('0'));
+}
+
+QString uniqueLocalPath(const QString& dir, const QString& name) {
+    const QString safe = safeName(name);
+    const QDir target(dir);
+    const QString direct = target.filePath(safe);
+    if (!QFileInfo::exists(direct)) {
+        return direct;
+    }
+
+    // 拆出扩展名再编号，"a.txt" → "a (1).txt"；隐藏文件（.gitignore）整体当基名。
+    QString base = safe;
+    QString ext;
+    const int dot = safe.lastIndexOf(QLatin1Char('.'));
+    if (dot > 0) {
+        base = safe.left(dot);
+        ext = safe.mid(dot);
+    }
+    for (int i = 1; i < 1000; ++i) {
+        const QString candidate =
+            target.filePath(QStringLiteral("%1 (%2)%3").arg(base).arg(i).arg(ext));
+        if (!QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return target.filePath(QStringLiteral("%1 (%2)%3")
+                               .arg(base)
+                               .arg(QDateTime::currentMSecsSinceEpoch())
+                               .arg(ext));
 }
 
 }  // namespace TransferUtil

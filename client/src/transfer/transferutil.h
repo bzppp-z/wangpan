@@ -21,4 +21,11 @@ QString formatSpeed(qint64 bytesPerSec);
 // 预计剩余秒数；速度为 0 时返回 0。
 qint64 etaSeconds(qint64 remainingBytes, qint64 bytesPerSec);
 
+// 剩余时间展示：90 → "01:30"，3600 → "1:00:00"，0 或负数 → "00:00"。
+QString formatEta(qint64 seconds);
+
+// 在 dir 下为 name 找一个不覆盖已有文件的路径：重名依次追加 " (1)"、" (2)"。
+// name 中的路径分隔符会被替换成下划线，避免远程文件名把文件写到目录外。
+QString uniqueLocalPath(const QString& dir, const QString& name);
+
 }  // namespace TransferUtil

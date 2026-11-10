@@ -33,6 +33,8 @@ public:
     // path 以 "/" 开头；自动带上 Content-Type 与 Authorization: Bearer。
     QNetworkRequest requestFor(const QString& path,
                                const QString& contentType = QStringLiteral("application/json")) const;
+    // 下载请求：offset > 0 时带 Range: bytes=<offset>-，并要求不压缩以保持字节对齐。
+    QNetworkRequest requestForDownload(qlonglong fileId, qint64 offset) const;
 
     // 把 HTTP 状态 + 错误响应体映射为可直接展示的中文提示。
     static QString errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err);

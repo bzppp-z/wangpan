@@ -61,6 +61,18 @@ QNetworkRequest ApiClient::requestFor(const QString& path, const QString& conten
     return req;
 }
 
+QNetworkRequest ApiClient::requestForDownload(qlonglong fileId, qint64 offset) const {
+    const QNetworkRequest base =
+        requestFor(QStringLiteral("/api/files/%1/content").arg(fileId),
+                   QStringLiteral("application/octet-stream"));
+    QNetworkRequest req = base;
+    req.setRawHeader("Accept-Encoding", "identity");
+    if (offset > 0) {
+        req.setRawHeader("Range", QByteArray("bytes=") + QByteArray::number(offset) + "-");
+    }
+    return req;
+}
+
 QString ApiClient::errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err) {
     if (status == 0) {
         switch (err) {

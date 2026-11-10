@@ -3,9 +3,11 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QDateTime>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -20,11 +22,15 @@
 #include <QPoint>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardItem>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QStatusBar>
+#include <QStorageInfo>
 #include <QTableView>
 #include <QTimer>
 #include <QTreeView>
@@ -32,6 +38,9 @@
 #include <QVBoxLayout>
 
 #include "apiclient.h"
+#include "transfer/downloadtask.h"
+#include "transfer/transferutil.h"
+#include "ui/previewpanel.h"
 #include "ui/theme.h"
 #include "ui/uploadcontroller.h"
 
@@ -62,6 +71,10 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
     : QMainWindow(parent),
       api_(api),
       uploads_(nullptr),
+      download_(nullptr),
+      previewPanel_(nullptr),
+      splitter_(nullptr),
+      previewLayoutBucket_(-1),
       currentId_(0),
       currentItem_(nullptr),
       pendingSelectId_(0),
@@ -73,7 +86,10 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
       statusLabel_(nullptr),
       uploadLabel_(nullptr),
       uploadBar_(nullptr),
+      downloadLabel_(nullptr),
+      downloadBar_(nullptr),
       quotaBar_(nullptr),
+      downloadButton_(nullptr),
       transientStatus_(false),
       statusSeq_(0) {
     setWindowTitle(QStringLiteral("网盘"));
@@ -106,14 +122,25 @@ void MainWindow::buildUi() {
     rootLayout->addWidget(buildToolBar());
 
     QWidget* filePanel = buildFilePanel();
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, central);
-    splitter->setChildrenCollapsible(false);
-    splitter->addWidget(tree_);
-    splitter->addWidget(filePanel);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes(QList<int>() << 240 << 860);
-    rootLayout->addWidget(splitter, 1);
+    splitter_ = new QSplitter(Qt::Horizontal, central);
+    splitter_->setChildrenCollapsible(false);
+    splitter_->addWidget(tree_);
+    splitter_->addWidget(filePanel);
+    splitter_->setStretchFactor(0, 0);
+    splitter_->setStretchFactor(1, 1);
+
+    // 第三栏预览面板默认隐藏，双击文件 / 右键"预览"时才展开。
+    previewPanel_ = new PreviewPanel(api_, splitter_);
+    previewPanel_->setMinimumWidth(280);
+    previewPanel_->hide();
+    splitter_->addWidget(previewPanel_);
+    splitter_->setStretchFactor(2, 0);
+    splitter_->setSizes(QList<int>() << 240 << 860 << 0);
+    connect(previewPanel_, &PreviewPanel::closeRequested, this, &MainWindow::onPreviewClosed);
+    connect(previewPanel_, &PreviewPanel::downloadRequested, this,
+            &MainWindow::onPreviewDownloadRequested);
+    connect(previewPanel_, &PreviewPanel::fileMissing, this, &MainWindow::refresh);
+    rootLayout->addWidget(splitter_, 1);
 
     setCentralWidget(central);
 
@@ -137,6 +164,24 @@ void MainWindow::buildUi() {
             .arg(theme::kPrimary.name()));
     uploadBar_->hide();
 
+    // 下载摘要：与上传摘要并排，各自带自己的进度条，空闲时成对隐藏。
+    downloadLabel_ = new QLabel(this);
+    downloadLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px; margin-left:16px;"
+                                                 " margin-right:8px;")
+                                      .arg(theme::kText.name()));
+    downloadLabel_->hide();
+    downloadBar_ = new QProgressBar(this);
+    downloadBar_->setFixedSize(120, 12);
+    downloadBar_->setRange(0, 100);
+    downloadBar_->setValue(0);
+    downloadBar_->setTextVisible(false);
+    downloadBar_->setStyleSheet(
+        QStringLiteral("QProgressBar { background:%1; border:none; border-radius:6px; }"
+                       "QProgressBar::chunk { background:%2; border-radius:6px; }")
+            .arg(theme::kProgressTrack.name())
+            .arg(theme::kSuccess.name()));
+    downloadBar_->hide();
+
     quotaBar_ = new QProgressBar(this);
     quotaBar_->setFixedSize(120, 12);
     quotaBar_->setRange(0, 100);
@@ -149,6 +194,8 @@ void MainWindow::buildUi() {
     statusBar()->addWidget(statusLabel_, 1);
     statusBar()->addPermanentWidget(uploadLabel_);
     statusBar()->addPermanentWidget(uploadBar_);
+    statusBar()->addPermanentWidget(downloadLabel_);
+    statusBar()->addPermanentWidget(downloadBar_);
     statusBar()->addPermanentWidget(quotaBar_);
     statusBar()->setStyleSheet(QStringLiteral("QStatusBar { background:#FFFFFF; border-top:1px solid #E5E6EB; }"
                                               "QStatusBar::item { border:none; }"));
@@ -203,6 +250,14 @@ QWidget* MainWindow::buildToolBar() {
         }
     });
 
+    downloadButton_ = new QPushButton(QStringLiteral("下载"), bar);
+    downloadButton_->setFixedHeight(32);
+    downloadButton_->setCursor(Qt::PointingHandCursor);
+    downloadButton_->setStyleSheet(secondaryStyle);
+    downloadButton_->setEnabled(false);
+    downloadButton_->setToolTip(QStringLiteral("下载选中的文件"));
+    connect(downloadButton_, &QPushButton::clicked, this, &MainWindow::startDownload);
+
     QPushButton* refreshButton = new QPushButton(QStringLiteral("刷新"), bar);
     refreshButton->setFixedHeight(32);
     refreshButton->setCursor(Qt::PointingHandCursor);
@@ -217,6 +272,7 @@ QWidget* MainWindow::buildToolBar() {
 
     layout->addWidget(newFolder);
     layout->addWidget(upload);
+    layout->addWidget(downloadButton_);
     layout->addWidget(refreshButton);
     layout->addStretch();
     layout->addWidget(logoutButton);
@@ -267,6 +323,33 @@ QWidget* MainWindow::buildFilePanel() {
             .arg(theme::kText.name())
             .arg(theme::kTextMuted.name()));
     connect(table_, &QTableView::doubleClicked, this, &MainWindow::onRowActivated);
+    connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            &MainWindow::updateDownloadAction);
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        const QModelIndex index = table_->indexAt(pos);
+        if (!index.isValid()) {
+            return;
+        }
+        table_->selectRow(index.row());
+        QStandardItem* nameItem = fileModel_->item(index.row(), 0);
+        if (nameItem == nullptr) {
+            return;
+        }
+        const bool isFile = nameItem->data(Qt::UserRole + 1).toString() == QStringLiteral("file");
+
+        QMenu menu(this);
+        QAction* previewAction = menu.addAction(QStringLiteral("预览"));
+        previewAction->setEnabled(isFile);
+        QAction* downloadAction = menu.addAction(QStringLiteral("下载"));
+        downloadAction->setEnabled(isFile);
+        QAction* chosen = menu.exec(table_->viewport()->mapToGlobal(pos));
+        if (chosen == previewAction && isFile) {
+            openPreview(nameItem);
+        } else if (chosen == downloadAction && isFile) {
+            startDownload();
+        }
+    });
     layout->addWidget(table_, 1);
 
     // 左目录树
@@ -408,6 +491,7 @@ void MainWindow::onFilesLoaded(const QJsonArray& items, qint64 usedBytes, qint64
         nameItem->setEditable(false);
         nameItem->setData(QVariant::fromValue<qlonglong>(id), Qt::UserRole);
         nameItem->setData(kind, Qt::UserRole + 1);
+        nameItem->setData(QVariant::fromValue<qlonglong>(size), Qt::UserRole + 2);
 
         QStandardItem* sizeItem = new QStandardItem(
             kind == QStringLiteral("folder") ? QStringLiteral("—") : formatSize(size));
@@ -467,6 +551,7 @@ void MainWindow::onRowActivated(const QModelIndex& index) {
         return;
     }
     if (nameItem->data(Qt::UserRole + 1).toString() != QStringLiteral("folder")) {
+        openPreview(nameItem);
         return;
     }
     navigateTo(nameItem->data(Qt::UserRole).toLongLong());
@@ -490,6 +575,13 @@ void MainWindow::createFolder() {
 
 void MainWindow::logout() {
     uploads_->cancelAll();
+    if (download_ != nullptr) {
+        download_->cancel();
+        download_->deleteLater();
+        download_ = nullptr;
+        downloadLabel_->hide();
+        downloadBar_->hide();
+    }
     api_->logout();
 }
 
@@ -505,6 +597,198 @@ void MainWindow::uploadFolder() {
     if (!dir.isEmpty()) {
         uploads_->addPaths(currentId_, QStringList() << dir);
     }
+}
+
+QStandardItem* MainWindow::selectedFileItem() const {
+    if (table_ == nullptr || table_->selectionModel() == nullptr) {
+        return nullptr;
+    }
+    const QModelIndexList rows = table_->selectionModel()->selectedRows();
+    if (rows.isEmpty()) {
+        return nullptr;
+    }
+    QStandardItem* item = fileModel_->item(rows.first().row(), 0);
+    if (item == nullptr || item->data(Qt::UserRole + 1).toString() != QStringLiteral("file")) {
+        return nullptr;
+    }
+    return item;
+}
+
+void MainWindow::updateDownloadAction() {
+    if (downloadButton_ != nullptr) {
+        downloadButton_->setEnabled(selectedFileItem() != nullptr);
+    }
+}
+
+void MainWindow::startDownload() {
+    QStandardItem* item = selectedFileItem();
+    if (item == nullptr) {
+        showStatusMessage(QStringLiteral("请先选择一个文件"), true);
+        return;
+    }
+
+    const qint64 remoteId = item->data(Qt::UserRole).toLongLong();
+    const QString remoteName = item->text();
+    const qint64 size = item->data(Qt::UserRole + 2).toLongLong();
+
+    // 本阶段同时只有一个下载作业：同一文件处于暂停态时点"下载"就是续传。
+    if (download_ != nullptr) {
+        if (download_->remoteId() == remoteId && download_->state() == DownloadTask::Paused) {
+            download_->resume();
+            showStatusMessage(QStringLiteral("继续下载：%1").arg(remoteName), false);
+            return;
+        }
+        if (download_->state() == DownloadTask::Running || download_->state() == DownloadTask::Verifying) {
+            showStatusMessage(QStringLiteral("已有下载任务正在进行"), true);
+            return;
+        }
+        if (download_->state() == DownloadTask::Paused) {
+            // 上一轮暂停的是别的文件：放弃它（删除 .part）再开新任务。
+            download_->cancel();
+        }
+    }
+
+    QSettings settings;
+    QString dir = settings.value(QStringLiteral("download/lastDir")).toString();
+    if (dir.isEmpty() || !QDir(dir).exists()) {
+        dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    }
+    if (dir.isEmpty()) {
+        dir = QDir::homePath();
+    }
+    const QString path =
+        QFileDialog::getSaveFileName(this, QStringLiteral("保存到"), QDir(dir).filePath(remoteName));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    // 已存在的 .part 会被续传，磁盘只需再容纳剩余部分。
+    qint64 partSize = QFileInfo(path + QStringLiteral(".part")).size();
+    if (partSize > size) {
+        partSize = 0;
+    }
+    const QStorageInfo storage(QFileInfo(path).absolutePath());
+    if (storage.isValid() && storage.bytesAvailable() < size - partSize) {
+        QMessageBox::warning(this, QStringLiteral("磁盘空间不足"),
+                             QStringLiteral("剩余空间不足以保存该文件，请换一个位置。"));
+        return;
+    }
+    settings.setValue(QStringLiteral("download/lastDir"), QFileInfo(path).absolutePath());
+
+    download_ = new DownloadTask(api_, remoteId, remoteName, size, path, this);
+    connect(download_, &DownloadTask::progress, this, &MainWindow::onDownloadProgress);
+    connect(download_, &DownloadTask::interrupted, this, &MainWindow::onDownloadInterrupted);
+    connect(download_, &DownloadTask::finished, this, &MainWindow::onDownloadFinished);
+    download_->start();
+}
+
+void MainWindow::onDownloadProgress(qint64 received, qint64 total, qint64 bytesPerSec) {
+    if (download_ == nullptr || downloadLabel_ == nullptr) {
+        return;
+    }
+    int percent = total > 0 ? static_cast<int>(received * 100 / total) : 0;
+    percent = qBound(0, percent, 100);
+    downloadLabel_->setText(QStringLiteral("下载中 · %1 %2% · %3")
+                                .arg(download_->remoteName())
+                                .arg(percent)
+                                .arg(TransferUtil::formatSpeed(bytesPerSec)));
+    downloadLabel_->show();
+    downloadBar_->setValue(percent);
+    downloadBar_->show();
+}
+
+void MainWindow::onDownloadInterrupted(const QString& message) {
+    if (download_ == nullptr || downloadLabel_ == nullptr) {
+        return;
+    }
+    downloadLabel_->setText(
+        QStringLiteral("下载已暂停 · %1 · %2").arg(download_->remoteName(), message));
+    downloadLabel_->show();
+    downloadBar_->show();
+    showStatusMessage(message, true);
+}
+
+void MainWindow::onDownloadFinished() {
+    DownloadTask* task = download_;
+    if (task == nullptr) {
+        return;
+    }
+    download_ = nullptr;
+    downloadLabel_->hide();
+    downloadBar_->hide();
+    if (task->state() == DownloadTask::Completed) {
+        showStatusMessage(
+            QStringLiteral("下载完成：%1").arg(QFileInfo(task->savePath()).fileName()), false);
+    } else if (task->state() == DownloadTask::Failed) {
+        showStatusMessage(QStringLiteral("下载失败：%1").arg(task->errorText()), true);
+    }
+    task->deleteLater();
+    updateDownloadAction();
+}
+
+void MainWindow::openPreview(QStandardItem* item) {
+    if (item == nullptr || previewPanel_ == nullptr) {
+        return;
+    }
+    if (item->data(Qt::UserRole + 1).toString() != QStringLiteral("file")) {
+        return;
+    }
+    if (previewPanel_->isHidden()) {
+        previewPanel_->show();
+        applyPreviewLayout();
+    }
+    previewPanel_->showFile(item->data(Qt::UserRole).toLongLong(), item->text(),
+                            item->data(Qt::UserRole + 2).toLongLong());
+}
+
+void MainWindow::openPreviewForSelected() {
+    openPreview(selectedFileItem());
+}
+
+void MainWindow::onPreviewClosed() {
+    if (previewPanel_ == nullptr || splitter_ == nullptr) {
+        return;
+    }
+    previewPanel_->clearPreview();
+    previewPanel_->hide();
+    previewLayoutBucket_ = -1;
+    // 面板收起后列表占满剩余宽度。
+    splitter_->setSizes(QList<int>() << 240 << qMax(0, splitter_->width() - 240) << 0);
+}
+
+void MainWindow::onPreviewDownloadRequested(qint64 fileId, const QString& name, qint64 size) {
+    Q_UNUSED(name);
+    Q_UNUSED(size);
+    // 面板里的文件必然来自当前列表；选中它后复用统一下载流程。
+    selectRowById(fileId);
+    if (selectedFileItem() == nullptr) {
+        showStatusMessage(QStringLiteral("文件已不在当前目录，请刷新后重试"), true);
+        return;
+    }
+    startDownload();
+}
+
+void MainWindow::applyPreviewLayout() {
+    if (splitter_ == nullptr || previewPanel_ == nullptr) {
+        return;
+    }
+    // 窄窗（1024）树 200 / 预览 300，宽窗树 240 / 预览 360，列表吃剩余宽度且不少于 320。
+    const int width = splitter_->width();
+    const bool narrow = width < 1200;
+    const int bucket = narrow ? 0 : 1;
+    if (bucket == previewLayoutBucket_) {
+        return;
+    }
+    previewLayoutBucket_ = bucket;
+
+    const int treeWidth = narrow ? 200 : 240;
+    int previewWidth = narrow ? 300 : 360;
+    int filesWidth = width - treeWidth - previewWidth;
+    if (filesWidth < 320) {
+        previewWidth = qMax(280, width - treeWidth - 320);
+        filesWidth = qMax(0, width - treeWidth - previewWidth);
+    }
+    splitter_->setSizes(QList<int>() << treeWidth << filesWidth << previewWidth);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
@@ -564,7 +848,7 @@ void MainWindow::updateQuota(qint64 usedBytes, qint64 quotaBytes) {
     usageText_ = QStringLiteral("已用 %1 / %2").arg(formatSize(usedBytes), formatSize(quotaBytes));
     // 临时消息（完成/失败提示）展示期间不要被配额刷新覆盖。
     if (!transientStatus_) {
-        statusLabel_->setText(usageText_);
+        applyUsageText();
         statusLabel_->setStyleSheet(
             QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
     }
@@ -599,8 +883,28 @@ void MainWindow::showStatusMessage(const QString& message, bool error) {
             return;
         }
         transientStatus_ = false;
-        statusLabel_->setText(usageText_);
+        applyUsageText();
         statusLabel_->setStyleSheet(
             QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
     });
+}
+
+void MainWindow::applyUsageText() {
+    if (statusLabel_ == nullptr || transientStatus_) {
+        return;
+    }
+    const int width = statusLabel_->width();
+    if (width <= 20) {
+        statusLabel_->setText(usageText_);
+        return;
+    }
+    statusLabel_->setText(statusLabel_->fontMetrics().elidedText(usageText_, Qt::ElideMiddle, width));
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    applyUsageText();
+    if (previewPanel_ != nullptr && !previewPanel_->isHidden()) {
+        applyPreviewLayout();
+    }
 }

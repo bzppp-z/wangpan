@@ -7,11 +7,15 @@
 
 class ApiClient;
 class UploadController;
+class DownloadTask;
+class PreviewPanel;
 class QDragEnterEvent;
 class QDropEvent;
 class QLabel;
 class QPushButton;
 class QProgressBar;
+class QResizeEvent;
+class QSplitter;
 class QStandardItem;
 class QStandardItemModel;
 class QTableView;
@@ -32,6 +36,7 @@ signals:
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private slots:
     void refresh();
@@ -39,6 +44,14 @@ private slots:
     void logout();
     void uploadFiles();
     void uploadFolder();
+    void startDownload();
+    void updateDownloadAction();
+    void onDownloadProgress(qint64 received, qint64 total, qint64 bytesPerSec);
+    void onDownloadInterrupted(const QString& message);
+    void onDownloadFinished();
+    void openPreviewForSelected();
+    void onPreviewClosed();
+    void onPreviewDownloadRequested(qint64 fileId, const QString& name, qint64 size);
     void onUploadSummary(const QString& text, int percent);
     void onUploadFinished(qint64 fileId, qint64 targetParentId, const QString& finalName);
     void onFilesLoaded(const QJsonArray& items, qint64 usedBytes, qint64 quotaBytes);
@@ -61,9 +74,21 @@ private:
     // 临时消息统一 3 秒后恢复"已用 X / Y"。
     void showStatusMessage(const QString& message, bool error);
     void selectRowById(qint64 id);
+    // 当前选中的是文件时返回其条目，文件夹或未选中返回 nullptr。
+    QStandardItem* selectedFileItem() const;
+    // 双击文件 / 右键"预览"：打开右侧面板并请求预览。
+    void openPreview(QStandardItem* item);
+    // 打开预览面板时按窗口宽度分配三栏（窄窗预览 300，宽窗 360）。
+    void applyPreviewLayout();
+    // 状态栏宽度变化时把配额文案按中间省略，避免挤掉右侧进度条。
+    void applyUsageText();
 
     ApiClient* api_;
     UploadController* uploads_;
+    DownloadTask* download_;
+    PreviewPanel* previewPanel_;
+    QSplitter* splitter_;
+    int previewLayoutBucket_;
     qint64 currentId_;
     QStandardItem* currentItem_;
     qint64 pendingSelectId_;
@@ -79,7 +104,10 @@ private:
     QLabel* statusLabel_;
     QLabel* uploadLabel_;
     QProgressBar* uploadBar_;
+    QLabel* downloadLabel_;
+    QProgressBar* downloadBar_;
     QProgressBar* quotaBar_;
+    QPushButton* downloadButton_;
     QString usageText_;
     // 临时消息展示期间，配额刷新不能覆盖它；statusSeq_ 用来作废过期的恢复定时器。
     bool transientStatus_;

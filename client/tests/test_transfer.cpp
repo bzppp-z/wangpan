@@ -1,3 +1,6 @@
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QtTest>
 #include "transferutil.h"
 
@@ -22,6 +25,37 @@ private slots:
     void computesEta() {
         QCOMPARE(TransferUtil::etaSeconds(0, 0), qint64(0));
         QCOMPARE(TransferUtil::etaSeconds(1048576, 1024), qint64(1024));
+    }
+    void formatEtaText() {
+        QCOMPARE(TransferUtil::formatEta(0), QString("00:00"));
+        QCOMPARE(TransferUtil::formatEta(90), QString("01:30"));
+        QCOMPARE(TransferUtil::formatEta(3600), QString("1:00:00"));
+        QCOMPARE(TransferUtil::formatEta(3725), QString("1:02:05"));
+    }
+    void uniqueLocalPathAvoidsOverwrite() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path();
+
+        // 目录里没有同名文件时直接用原名，不编号。
+        QCOMPARE(TransferUtil::uniqueLocalPath(path, "a.txt"),
+                 QDir(path).filePath("a.txt"));
+
+        QFile first(QDir(path).filePath("a.txt"));
+        QVERIFY(first.open(QIODevice::WriteOnly));
+        first.close();
+        QCOMPARE(TransferUtil::uniqueLocalPath(path, "a.txt"),
+                 QDir(path).filePath("a (1).txt"));
+
+        QFile second(QDir(path).filePath("a (1).txt"));
+        QVERIFY(second.open(QIODevice::WriteOnly));
+        second.close();
+        QCOMPARE(TransferUtil::uniqueLocalPath(path, "a.txt"),
+                 QDir(path).filePath("a (2).txt"));
+
+        // 远程名里的目录分隔符不能把文件带出目标目录。
+        QCOMPARE(TransferUtil::uniqueLocalPath(path, "../evil.txt"),
+                 QDir(path).filePath(".._evil.txt"));
     }
 };
 

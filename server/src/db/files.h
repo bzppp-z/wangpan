@@ -32,6 +32,35 @@ std::string unique_name(long long owner_id, long long parent_id, const std::stri
 bool rename_file(long long owner_id, long long file_id, const std::string& desired_name,
                  std::string& out_name, std::string& err);
 
+// 回收站条目：只包含子树根，parent_name 为父目录名（父目录已删除时也照常给出）。
+struct TrashRow {
+    long long id = 0;
+    long long parent_id = 0;
+    std::string name;
+    std::string kind;
+    long long size = 0;
+    long long deleted_at = 0;
+    long long expires_at = 0;  // deleted_at + 30 天
+    std::string parent_name;
+};
+
+// 软删除整棵子树（统一 deleted_at），不扣配额。仅当前账户下未删除的条目可删。
+bool soft_delete_subtree(long long owner_id, long long file_id, std::string& err);
+
+// 回收站列表：只列"父节点未删除或本身就是根"的子树根，按删除时间倒序。
+bool list_trash(long long owner_id, std::vector<TrashRow>& out, std::string& err);
+
+// 恢复整棵子树到原目录；原父目录已删除/不存在时回到根目录，重名按 R2 自动改名。
+bool restore_subtree(long long owner_id, long long file_id, std::string& out_name,
+                     long long& out_parent_id, std::string& err);
+
+// 彻底删除整棵子树：删除 files 行、blob 引用计数 -1，归零的 blob 记入 out_shas 供删磁盘。
+bool purge_subtree(long long owner_id, long long file_id, std::vector<std::string>& out_shas,
+                   std::string& err);
+
+// 清理超过 30 天的回收站子树根；等价于对每个过期根执行 purge_subtree。
+bool purge_expired(long long now, std::vector<std::string>& out_shas, std::string& err);
+
 // 查询当前用户名下的文件夹；folder_id = 0 视为根目录，恒为 true。
 bool find_folder(long long owner_id, long long folder_id, std::string& out_name);
 

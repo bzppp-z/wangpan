@@ -73,18 +73,18 @@ check_grep "rename result" /tmp/wp_rn.json '"name":"renamed.bin"'
 - Modify：`server/src/main.cpp`（注册路由 + 启动清理 + 后台清理线程）
 - Modify：`server/tests/test_trash.cpp`（补齐删除/恢复/彻底删除/过期）
 - Modify：`scripts/smoke.sh`
-- Modify：`server/src/db/db.cpp`（若阶段 1 未加互斥，这里补上全局 `std::mutex` 包住所有 prepare/step；后台线程与请求线程共用同一连接）
+- Modify：`server/src/db/db.cpp`（若阶段 1 未加互斥，这里补上全局 `std::mutex` 包住所有 prepare/step；后台线程与请求线程共用同一连接）——实际未加：SQLite 以 serialized 模式编译，单连接跨线程访问由库内部串行化；本阶段的多语句子树操作统一用 `BEGIN IMMEDIATE` 事务保证原子性，避免清理线程与请求线程交错。
 
 **步骤：**
 
-- [ ] 补齐 `test_trash.cpp`：
+- [x] 补齐 `test_trash.cpp`：
   - 建文件夹 `A`，在 `A` 内建文件 `f`（关联 blob，refcount=1）；
   - `soft_delete_subtree(A)`：`A` 与 `f` 的 `deleted_at` 均非空；`used_bytes` 不变；
   - `list_trash` 只返回 `A`（不返回 `f`）；
   - `restore_subtree(A)`：两者恢复；若同时存在新的 `A`，最终名为 `A (1)`；
   - `purge_subtree(A)`：`files` 中两行删除，blob `refcount` 变 0，`blobs` 行删除；
   - 把 `deleted_at` 改成 31 天前，`purge_expired(now)` 后该子树消失。
-- [ ] 实现递归 SQL（SQLite 支持 `WITH RECURSIVE`）。递归时**不过滤 `deleted_at`**，把子树里"先前已被单独删除的子孙"也统一成同一个删除时间——语义固定为"删除/恢复整个文件夹时，连同其中的所有内容一起处理"，不会出现父目录恢复了、里面的子项却永远躺在回收站里的半截状态：
+- [x] 实现递归 SQL（SQLite 支持 `WITH RECURSIVE`）。递归时**不过滤 `deleted_at`**，把子树里"先前已被单独删除的子孙"也统一成同一个删除时间——语义固定为"删除/恢复整个文件夹时，连同其中的所有内容一起处理"，不会出现父目录恢复了、里面的子项却永远躺在回收站里的半截状态：
 
 ```sql
 -- 软删除子树（统一时间戳）
@@ -97,17 +97,17 @@ WITH RECURSIVE sub(id) AS (
 UPDATE files SET deleted_at = ? WHERE id IN (SELECT id FROM sub);
 ```
 
-- [ ] `restore_subtree` 同理：把子树内所有行（含子孙）的 `deleted_at` 置空。
+- [x] `restore_subtree` 同理：把子树内所有行（含子孙）的 `deleted_at` 置空。实现按 depth 从浅到深逐行恢复，子项重名时同样按 R2 自动改名。
 
-- [ ] 实现 `GET /api/trash`：只取子树根（父节点未删除或 `parent_id=0`），带 `parent_name`（父节点即使已删除也能显示原名称）、`expires_at = deleted_at + 30d`，按 `deleted_at DESC`。
-- [ ] 实现 `POST /api/trash/{id}/restore`：校验是子树根 → 父目录若已删除/不存在则 `parent_id = 0` → 按 R2 取唯一名 → 子树 `deleted_at = NULL` → 200。
-- [ ] 实现 `DELETE /api/trash/{id}` 与 `DELETE /api/trash`：
+- [x] 实现 `GET /api/trash`：只取子树根（父节点未删除或 `parent_id=0`），带 `parent_name`（父节点即使已删除也能显示原名称）、`expires_at = deleted_at + 30d`，按 `deleted_at DESC`。
+- [x] 实现 `POST /api/trash/{id}/restore`：校验是子树根 → 父目录若已删除/不存在则 `parent_id = 0` → 按 R2 取唯一名 → 子树 `deleted_at = NULL` → 200。
+- [x] 实现 `DELETE /api/trash/{id}` 与 `DELETE /api/trash`：
   1. 收集子树内所有 `blob_id`；
-  2. 事务内删除 `files` 行、对每个 blob `refcount = MAX(refcount - 1, 0)`、删除 `refcount = 0` 的 `blobs` 行并记下 sha；
+  2. 事务内先删除 `files` 行（`blob_id` 外键要求先删引用方），再对每个 blob `refcount = refcount - 1`、删除 `refcount <= 0` 的 `blobs` 行并记下 sha；
   3. 提交后按 `blob_path(sha)` 删除磁盘文件；单个文件删除失败只记 warning，不返回失败。
-- [ ] 启动时调用一次 `purge_expired(now)`；`main.cpp` 里再起一个 detached 线程，每 6 小时调用一次（进程退出即结束，不 join）。
-- [ ] 启动清理顺带处理孤儿 blob：`refcount = 0` 的 `blobs` 行直接删除，并按 `blob_path` 删除磁盘文件（覆盖阶段 3 崩溃时可能留下的"有行无文件/有文件无行"中的第一种；有文件无行的情况会在下次上传同内容时被 `commit_blob` 复用）。
-- [ ] 冒烟断言：
+- [x] 启动时调用一次 `purge_expired(now)`；`main.cpp` 里再起一个 detached 线程，每 6 小时调用一次（进程退出即结束，不 join）。
+- [x] 启动清理顺带处理孤儿 blob：`refcount = 0` 的 `blobs` 行直接删除，并按 `blob_path` 删除磁盘文件（覆盖阶段 3 崩溃时可能留下的"有行无文件/有文件无行"中的第一种；有文件无行的情况会在下次上传同内容时被 `commit_blob` 复用）。
+- [x] 冒烟断言：
 
 ```bash
 del=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/files/$fid" \
@@ -124,7 +124,7 @@ check "purge 204" 204 "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
 check "trash empty" 0 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $token" | grep -c '"id"')"
 ```
 
-- [ ] 配额验证：彻底删除后用 `GET /api/files` 检查 `used_bytes` 减少恰好一个文件大小；仅软删除时不减少。
+- [x] 配额验证：彻底删除后用 `GET /api/files` 检查 `used_bytes` 减少恰好一个文件大小；仅软删除时不减少。
 
 **安全 / 边界说明：** 所有子树操作都带 `owner_id` 条件；彻底删除是唯一会调 `refcount` 的入口，且必须在事务内完成计数变更；磁盘删除放在事务提交后，避免回滚后文件先没了。
 

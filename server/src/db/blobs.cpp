@@ -142,5 +142,115 @@ bool incref(long long blob_id, std::string& err) {
     return true;
 }
 
+bool decref_and_collect(long long blob_id, std::string& out_sha, bool& out_removed,
+                        std::string& err) {
+    err.clear();
+    out_sha.clear();
+    out_removed = false;
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        err = "数据库未打开";
+        return false;
+    }
+
+    {
+        const char* sql = "UPDATE blobs SET refcount = refcount - 1 WHERE id = ?";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        sqlite3_bind_int64(stmt, 1, blob_id);
+        const int rc = sqlite3_step(stmt);
+        const std::string message = sqlite3_errmsg(h);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            err = message;
+            return false;
+        }
+    }
+
+    // 只有降到 0 才删除行；删除前取出 sha，供调用方提交事务后清理磁盘。
+    {
+        const char* sql = "SELECT sha256 FROM blobs WHERE id = ? AND refcount <= 0";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        sqlite3_bind_int64(stmt, 1, blob_id);
+        const int rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            out_sha = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        }
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+    }
+    if (out_sha.empty()) {
+        return true;
+    }
+
+    {
+        const char* sql = "DELETE FROM blobs WHERE id = ? AND refcount <= 0";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        sqlite3_bind_int64(stmt, 1, blob_id);
+        const int rc = sqlite3_step(stmt);
+        const std::string message = sqlite3_errmsg(h);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            err = message;
+            return false;
+        }
+        out_removed = true;
+    }
+    return true;
+}
+
+bool remove_zero_ref(std::vector<std::string>& out_shas, std::string& err) {
+    err.clear();
+    out_shas.clear();
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        err = "数据库未打开";
+        return false;
+    }
+
+    {
+        const char* sql = "SELECT sha256 FROM blobs WHERE refcount <= 0";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+        int rc = SQLITE_ROW;
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            out_shas.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        }
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            err = sqlite3_errmsg(h);
+            return false;
+        }
+    }
+
+    char* message = nullptr;
+    if (sqlite3_exec(h, "DELETE FROM blobs WHERE refcount <= 0", nullptr, nullptr, &message) !=
+        SQLITE_OK) {
+        err = message != nullptr ? message : "删除孤儿内容记录失败";
+        if (message != nullptr) {
+            sqlite3_free(message);
+        }
+        return false;
+    }
+    return true;
+}
+
 }  // namespace blobs
 }  // namespace db

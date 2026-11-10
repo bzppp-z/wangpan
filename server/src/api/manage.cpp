@@ -83,8 +83,35 @@ void handle_rename(const httplib::Request& req, httplib::Response& res) {
     api::json_ok(res, result);
 }
 
+void handle_delete(const httplib::Request& req, httplib::Response& res) {
+    long long user_id = 0;
+    if (!auth::resolve(req, user_id)) {
+        api::json_error(res, 401, "unauthorized", "登录已过期，请重新登录");
+        return;
+    }
+
+    long long file_id = 0;
+    if (!parse_id(req.matches[1].str(), file_id)) {
+        api::json_error(res, 404, "not_found", "文件不存在");
+        return;
+    }
+
+    std::string err;
+    if (!db::files::soft_delete_subtree(user_id, file_id, err)) {
+        if (err == "not_found") {
+            api::json_error(res, 404, "not_found", "文件不存在");
+            return;
+        }
+        log_error("删除到回收站失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    res.status = 204;
+}
+
 void register_routes(httplib::Server& svr) {
     svr.Patch(R"(/api/files/([0-9]+))", handle_rename);
+    svr.Delete(R"(/api/files/([0-9]+))", handle_delete);
 }
 
 }  // namespace api_manage

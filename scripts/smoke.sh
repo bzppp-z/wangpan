@@ -378,5 +378,73 @@ check "无 token 重命名 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --
   -X PATCH "$BASE/api/files/$fid" -H 'Content-Type: application/json' \
   -d '{"name":"x.bin"}')"
 
+# ===== 回收站：软删除 / 恢复 / 彻底删除 / 清空 =====
+USED_BEFORE=$(sed -n 's/.*"used_bytes":\([0-9]*\).*/\1/p' /tmp/wp_rn_list.json)
+del=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE "$BASE/api/files/$fid" \
+  -H "Authorization: Bearer $TOKEN")
+check "soft delete 204" 204 "$del"
+check "soft delete again 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/files/$fid" -H "Authorization: Bearer $TOKEN")"
+
+curl -s -o /tmp/wp_used_soft.json --max-time 5 "$BASE/api/files?parent_id=0" \
+  -H "Authorization: Bearer $TOKEN"
+check "soft delete keeps used_bytes" "$USED_BEFORE" \
+  "$(sed -n 's/.*"used_bytes":\([0-9]*\).*/\1/p' /tmp/wp_used_soft.json)"
+check "soft deleted hidden from list" 0 "$(grep -c '"renamed.bin"' /tmp/wp_used_soft.json)"
+
+trash=$(curl -s -o /tmp/wp_trash.json -w '%{http_code}' --max-time 5 "$BASE/api/trash" \
+  -H "Authorization: Bearer $TOKEN")
+check "trash 200" 200 "$trash"
+check_grep "trash contains renamed" /tmp/wp_trash.json '"name":"renamed.bin"'
+check_grep "trash has expires_at" /tmp/wp_trash.json '"expires_at":'
+check_grep "trash parent name" /tmp/wp_trash.json '"parent_name"'
+check "trash 无 token 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  "$BASE/api/trash")"
+
+# 跨账户不可见、不可操作。
+curl -s -o /tmp/wp_bob_trash.json --max-time 5 "$BASE/api/trash" -H "Authorization: Bearer $BTOKEN"
+check "bob trash empty" 0 "$(grep -c '"id"' /tmp/wp_bob_trash.json)"
+check "cross account restore 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X POST --data '' "$BASE/api/trash/$fid/restore" -H "Authorization: Bearer $BTOKEN")"
+check "cross account purge 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/trash/$fid" -H "Authorization: Bearer $BTOKEN")"
+check "cross account delete 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/files/$fid" -H "Authorization: Bearer $BTOKEN")"
+
+restore=$(curl -s -o /tmp/wp_restore.json -w '%{http_code}' --max-time 5 \
+  -X POST --data '' "$BASE/api/trash/$fid/restore" -H "Authorization: Bearer $TOKEN")
+check "restore 200" 200 "$restore"
+check_grep "restore keeps name" /tmp/wp_restore.json '"name":"renamed.bin"'
+check_grep "restore parent 0" /tmp/wp_restore.json '"parent_id":0'
+check "restore again 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X POST --data '' "$BASE/api/trash/$fid/restore" -H "Authorization: Bearer $TOKEN")"
+
+check "delete again 204" 204 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE \
+  "$BASE/api/files/$fid" -H "Authorization: Bearer $TOKEN")"
+check "purge 204" 204 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE \
+  "$BASE/api/trash/$fid" -H "Authorization: Bearer $TOKEN")"
+check "trash empty" 0 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $TOKEN" | grep -c '"id"')"
+
+curl -s -o /tmp/wp_used_purge.json --max-time 5 "$BASE/api/files?parent_id=0" \
+  -H "Authorization: Bearer $TOKEN"
+check "purge releases quota" "$((USED_BEFORE - 5242880))" \
+  "$(sed -n 's/.*"used_bytes":\([0-9]*\).*/\1/p' /tmp/wp_used_purge.json)"
+
+# 清空回收站：删除一个空文件夹后一次性清掉。
+curl -s -o /tmp/wp_clear_mk.json --max-time 5 -X POST "$BASE/api/folders" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"待清空"}' > /dev/null
+CLEAR_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/wp_clear_mk.json)
+curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE "$BASE/api/files/$CLEAR_ID" \
+  -H "Authorization: Bearer $TOKEN" > /dev/null
+check "trash before clear" 1 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $TOKEN" \
+  | grep -c '"id"')"
+check "clear trash 204" 204 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/trash" -H "Authorization: Bearer $TOKEN")"
+check "trash empty after clear" 0 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $TOKEN" \
+  | grep -c '"id"')"
+check "clear 无 token 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -X DELETE "$BASE/api/trash")"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

@@ -8,6 +8,7 @@
 
 #include "api/respond.h"
 #include "config.h"
+#include "db/db.h"
 #include "httplib.h"
 #include "log.h"
 #include "nlohmann/json.hpp"
@@ -80,6 +81,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    const std::string db_path = cfg.data_dir + "/wangpan.db";
+    if (!db::open(db_path, err)) {
+        log_error(err);
+        return 1;
+    }
+    if (!db::init_schema(err)) {
+        log_error("建表失败：" + err);
+        db::close();
+        return 1;
+    }
+
     httplib::Server svr;
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
         nlohmann::json body;
@@ -94,7 +106,9 @@ int main(int argc, char** argv) {
     if (!svr.listen(cfg.bind_addr, cfg.port)) {
         log_error("服务启动失败：" + cfg.bind_addr + ":" + std::to_string(cfg.port) +
                   "（端口可能已被占用）");
+        db::close();
         return 1;
     }
+    db::close();
     return 0;
 }

@@ -110,16 +110,18 @@ cmake --build build-wsl -j
 - Create：`server/src/db/sessions.h`、`server/src/db/sessions.cpp`
 - Create：`server/src/db/files.h`、`server/src/db/files.cpp`
 - Create：`server/tests/test_schema.cpp`
+- Modify：`server/CMakeLists.txt`（把 `db/*.cpp` 加入 `APP_SOURCES`，启用 `test_schema` 目标）
+- Modify：`server/src/main.cpp`（启动时打开 `data_dir/wangpan.db` 并幂等建表）
 
 **步骤：**
 
-- [ ] 先写 `server/tests/test_schema.cpp`（期望先失败：`init_schema` 尚未实现）。测试内容：
+- [x] 先写 `server/tests/test_schema.cpp`（期望先失败：`init_schema` 尚未实现）。测试内容：
   - `db::open(":memory:", err)` 成功；
   - `db::init_schema(err)` 成功；
   - 查询 `sqlite_master`，五张表 `users/sessions/blobs/files/upload_sessions` 均存在；
   - `db::create_user("alice", "salt", "hash", 5368709120, id, err)` 成功，`id > 0`；
   - 再次 `create_user("alice", ...)` 失败且错误信息非空（唯一约束生效）。
-- [ ] 写 `schema.h`，用 raw string 内嵌下列 SQL，由 `db::init_schema` 依次执行（`CREATE ... IF NOT EXISTS`，可重复执行）：
+- [x] 写 `schema.h`，用 raw string 内嵌下列 SQL，由 `db::init_schema` 依次执行（`CREATE ... IF NOT EXISTS`，可重复执行）：
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -180,14 +182,14 @@ CREATE TABLE IF NOT EXISTS upload_sessions (
 );
 ```
 
-- [ ] 写 `db.h/.cpp`：`open(path, err)`（文件库开启 WAL 与 `foreign_keys`，`:memory:` 跳过 WAL）、`close()`、`handle()`、`init_schema(err)`，所有 SQL 错误统一转成 `err` 字符串，不得抛异常。
-- [ ] 写 `users.h/.cpp`：
+- [x] 写 `db.h/.cpp`：`open(path, err)`（文件库开启 WAL 与 `foreign_keys`，`:memory:` 跳过 WAL）、`close()`、`handle()`、`init_schema(err)`，所有 SQL 错误统一转成 `err` 字符串，不得抛异常。
+- [x] 写 `users.h/.cpp`：
   - `bool create_user(username, salt_hex, hash_hex, quota_bytes, out_id, err)`
   - `bool find_user_by_name(username, out_id, out_salt, out_hash, out_quota, err)`
   - `long long used_bytes(user_id)`：统计该用户所有 `kind='file'` 的 `size` 之和（含回收站内文件，符合 PRD R9）。
-- [ ] 写 `sessions.h/.cpp`：`create_session(user_id, token_hash, expires_at)`、`find_session(token_hash, out_user_id, out_expires_at, err)`、`delete_session(token_hash)`、`delete_expired_sessions()`。
-- [ ] 写 `files.h/.cpp`：`list_children(owner_id, parent_id)`、`unique_name(owner_id, parent_id, desired_name)`（按 R2 依次尝试 `name`、`name (1)`、`name (2)`…，超过 255 字符时截断原名保留后缀）、`find_folder(owner_id, folder_id, out_row)`、`create_folder(owner_id, parent_id, name, out_id, out_name, err)`（始终返回最终落地名称；依赖 `idx_files_active_name` 唯一索引，插入冲突时换下一个候选名重试，最多 100 次，不做"先查后插"）。
-- [ ] 编译并跑测试：
+- [x] 写 `sessions.h/.cpp`：`create_session(user_id, token_hash, expires_at)`、`find_session(token_hash, out_user_id, out_expires_at, err)`、`delete_session(token_hash)`、`delete_expired_sessions()`。
+- [x] 写 `files.h/.cpp`：`list_children(owner_id, parent_id)`、`unique_name(owner_id, parent_id, desired_name)`（按 R2 依次尝试 `name`、`name (1)`、`name (2)`…，超过 255 字符时截断原名保留后缀）、`find_folder(owner_id, folder_id, out_row)`、`create_folder(owner_id, parent_id, name, out_id, out_name, err)`（始终返回最终落地名称；依赖 `idx_files_active_name` 唯一索引，插入冲突时换下一个候选名重试，最多 100 次，不做"先查后插"）。
+- [x] 编译并跑测试：
 
 ```bash
 cmake --build build-wsl -j

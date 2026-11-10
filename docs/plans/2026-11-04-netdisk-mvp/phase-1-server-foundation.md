@@ -230,7 +230,7 @@ ctest --test-dir build-wsl --output-on-failure
 
 **步骤：**
 
-- [ ] 先写 `server/tests/test_auth.cpp`（配套上面的桩，预期 5 条断言全失败）：
+- [x] 先写 `server/tests/test_auth.cpp`（配套上面的桩，预期 5 条断言全失败）：
 
 ```cpp
 #include <cstdio>
@@ -261,7 +261,7 @@ int main() {
     expect(token.size() == 64, "token is 64 hex chars");
 
     const std::time_t now = std::time(nullptr);
-    db::create_session(uid, crypto::sha256_hex(token), now + 3600);
+    expect(db::create_session(uid, crypto::sha256_hex(token), now + 3600, err), "create session");
 
     httplib::Request req;
     req.set_header("Authorization", "Bearer " + token);
@@ -278,12 +278,12 @@ int main() {
     expect(!auth::resolve(forged, ignored), "forged token rejected");
 
     const std::string expired_token = crypto::random_hex(32);
-    db::create_session(uid, crypto::sha256_hex(expired_token), now - 1);
+    db::create_session(uid, crypto::sha256_hex(expired_token), now - 1, err);
     httplib::Request expired;
     expired.set_header("Authorization", "Bearer " + expired_token);
     expect(!auth::resolve(expired, ignored), "expired token rejected");
 
-    db::delete_session(crypto::sha256_hex(token));
+    db::delete_session(crypto::sha256_hex(token), err);
     expect(!auth::resolve(req, ignored), "token rejected after logout");
 
     db::close();

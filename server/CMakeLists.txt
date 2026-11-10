@@ -13,6 +13,8 @@ set(APP_SOURCES
   src/db/users.cpp
   src/db/sessions.cpp
   src/db/files.cpp
+  src/util/crypto.cpp
+  src/api/auth.cpp
 )
 
 add_executable(wangpan_server ${APP_SOURCES})
@@ -27,3 +29,9 @@ add_executable(test_schema tests/test_schema.cpp src/db/db.cpp src/db/users.cpp)
 target_include_directories(test_schema PRIVATE src third_party)
 target_link_libraries(test_schema PRIVATE SQLite::SQLite3 Threads::Threads)
 add_test(NAME schema COMMAND test_schema)
+
+add_executable(test_auth tests/test_auth.cpp
+  src/db/db.cpp src/db/users.cpp src/db/sessions.cpp src/util/crypto.cpp src/api/auth.cpp)
+target_include_directories(test_auth PRIVATE src third_party)
+target_link_libraries(test_auth PRIVATE SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
+add_test(NAME auth COMMAND test_auth)

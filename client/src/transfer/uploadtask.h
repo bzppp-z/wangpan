@@ -36,10 +36,13 @@ public:
     void cancel();
 
     State state() const { return state_; }
+    // 稳定标识（QUuid），传输队列与持久化按它索引任务。
+    QString id() const { return id_; }
     QString localPath() const { return localPath_; }
     QString remoteName() const { return remoteName_; }
     qint64 targetParentId() const { return parentId_; }
     qint64 fileSize() const { return size_; }
+    QString sha256() const { return sha_; }
     QString finalName() const { return finalName_; }
     qint64 fileId() const { return fileId_; }
     bool instant() const { return instant_; }
@@ -76,6 +79,7 @@ private:
     qint64 parentId_;
     QString localPath_;
     QString remoteName_;
+    QString id_;
 
     qint64 size_ = 0;
     QString sha_;

@@ -5,6 +5,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
+#include <QUuid>
 
 #include "apiclient.h"
 #include "hashworker.h"
@@ -23,6 +24,7 @@ DownloadTask::DownloadTask(ApiClient* api, qint64 remoteId, const QString& remot
       api_(api),
       remoteId_(remoteId),
       remoteName_(remoteName),
+      id_(QUuid::createUuid().toString(QUuid::WithoutBraces)),
       size_(size),
       savePath_(savePath),
       partPath_(savePath + QStringLiteral(".part")) {}

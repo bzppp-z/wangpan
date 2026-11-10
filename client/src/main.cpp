@@ -21,6 +21,8 @@ int main(int argc, char* argv[]) {
     QObject::connect(&login, &LoginWindow::loggedIn, [&](const QString& token, qint64) {
         api.setToken(token);
         mainWindow = new MainWindow(&api);
+        // 关闭窗口时真正析构，传输管理器才有机会把未完成任务写入 transfers.json。
+        mainWindow->setAttribute(Qt::WA_DeleteOnClose);
         QObject::connect(mainWindow, &MainWindow::signedOut, &login, [&]() {
             if (mainWindow != nullptr) {
                 mainWindow->deleteLater();

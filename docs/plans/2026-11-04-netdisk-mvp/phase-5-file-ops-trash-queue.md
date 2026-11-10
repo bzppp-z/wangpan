@@ -156,14 +156,14 @@ check "trash empty" 0 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $to
 
 **步骤：**
 
-- [ ] 实现 `TransferManager`：
+- [x] 实现 `TransferManager`：
   - `addUpload(localPath, parentId, desiredName)` / `addDownload(remoteId, remoteName, savePath)`；
   - 队列：`runningCount < 3` 才 `start`，任务结束（任意终态）后从队列取下一个；
   - `pause(id)` / `resume(id)` / `cancel(id)` / `retry(id)` / `clearCompleted()` 转发到具体任务；
   - 每 500 ms 汇总一次速度与 ETA（3 秒滑动窗口），发 `summaryChanged(QString text, bool anyActive)`；
   - 任务状态变化发 `taskUpdated(QString id)`，供面板刷新一行；
   - `UploadTask` / `DownloadTask` 增加稳定 `id`（`QUuid`）。
-- [ ] 持久化：`QStandardPaths::AppDataLocation + "/transfers.json"`，格式：
+- [x] 持久化：`QStandardPaths::AppDataLocation + "/transfers.json"`，格式：
 
 ```json
 {"version":1,"items":[
@@ -174,9 +174,9 @@ check "trash empty" 0 "$(curl -s "$BASE/api/trash" -H "Authorization: Bearer $to
 
   - 登录成功后恢复：上传任务若本地文件不存在 → 标记失败"源文件不存在"；下载任务若 `.part` 存在则按已下字节续传；
   - 只在"未完成"任务（Waiting/Running/Paused/Failed）写入文件；Completed/Canceled 不写；启动恢复后不自动开始，状态置"等待中"，用户点继续。
-- [ ] 实现 `TransferPanel`：`QTableWidget` 8 列 + 右键菜单 + 顶部"清空已完成"；收起态与状态栏摘要联动（摘要点击展开）。
-- [ ] 主窗口替换：阶段 3 的 `UploadController` 与阶段 4 的下载入口统一改调 `TransferManager`；工具栏"上传"菜单、"下载"按钮、拖拽都进队列。
-- [ ] 手工验证：
+- [x] 实现 `TransferPanel`：`QTableWidget` 7 列 + 右键菜单 + 顶部"清空已完成"；收起态与状态栏摘要联动（摘要点击展开）。
+- [x] 主窗口替换：阶段 3 的 `UploadController` 与阶段 4 的下载入口统一改调 `TransferManager`；工具栏"上传"菜单、"下载"按钮、拖拽都进队列。
+- [x] 手工验证：
   - 同时拖入 4 个文件 → 3 个进行中、1 个等待；某个完成后等待的自动开始；
   - 暂停 1 个 → 其余不受影响；继续 → 从原进度走；
   - 关掉客户端（任务未完成）→ 重开登录 → 传输行仍在，状态"等待中"，点继续可完成。

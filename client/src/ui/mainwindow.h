@@ -6,11 +6,12 @@
 #include <QString>
 
 class ApiClient;
-class UploadController;
-class DownloadTask;
+class TransferManager;
+class TransferPanel;
 class PreviewPanel;
 class QDragEnterEvent;
 class QDropEvent;
+class QFrame;
 class QLabel;
 class QPushButton;
 class QProgressBar;
@@ -23,11 +24,14 @@ class QTreeView;
 class QHBoxLayout;
 class QModelIndex;
 
-// 主窗口：左目录树 + 右文件列表 + 底部配额与上传摘要。
+// 主窗口：左目录树 + 右文件列表 + 底部传输摘要（可展开）与配额。
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(ApiClient* api, QWidget* parent = nullptr);
+
+    // 截图与调试使用：访问统一传输队列。
+    TransferManager* transferManager() const { return transfers_; }
 
 signals:
     // 主动退出登录或会话过期，外层负责重新显示登录窗。
@@ -46,14 +50,13 @@ private slots:
     void uploadFolder();
     void startDownload();
     void updateDownloadAction();
-    void onDownloadProgress(qint64 received, qint64 total, qint64 bytesPerSec);
-    void onDownloadInterrupted(const QString& message);
-    void onDownloadFinished();
     void openPreviewForSelected();
     void onPreviewClosed();
     void onPreviewDownloadRequested(qint64 fileId, const QString& name, qint64 size);
-    void onUploadSummary(const QString& text, int percent);
-    void onUploadFinished(qint64 fileId, qint64 targetParentId, const QString& finalName);
+    void onTransferSummary(const QString& text, bool anyActive);
+    void setTransferExpanded(bool expanded);
+    void onUploadCompleted(qint64 fileId, qint64 parentId, const QString& finalName);
+    void onDownloadCompleted(const QString& savePath);
     void onFilesLoaded(const QJsonArray& items, qint64 usedBytes, qint64 quotaBytes);
     void onFolderCreated(qint64 id, const QString& finalName);
     void onFailed(const QString& message);
@@ -65,6 +68,7 @@ private:
     void buildUi();
     QWidget* buildToolBar();
     QWidget* buildFilePanel();
+    QWidget* buildTransferBar();
     void navigateTo(qint64 folderId);
     void rebuildBreadcrumb();
     void populateTree(qint64 parentId, const QJsonArray& items);
@@ -84,10 +88,15 @@ private:
     void applyUsageText();
 
     ApiClient* api_;
-    UploadController* uploads_;
-    DownloadTask* download_;
+    TransferManager* transfers_;
+    TransferPanel* transferPanel_;
+    QFrame* transferBar_;
+    QLabel* transferSummaryLabel_;
+    QLabel* transferArrow_;
+    bool transferExpanded_;
     PreviewPanel* previewPanel_;
     QSplitter* splitter_;
+    QSplitter* vSplitter_;
     int previewLayoutBucket_;
     qint64 currentId_;
     QStandardItem* currentItem_;
@@ -102,10 +111,6 @@ private:
     QHBoxLayout* breadcrumbLayout_;
 
     QLabel* statusLabel_;
-    QLabel* uploadLabel_;
-    QProgressBar* uploadBar_;
-    QLabel* downloadLabel_;
-    QProgressBar* downloadBar_;
     QProgressBar* quotaBar_;
     QPushButton* downloadButton_;
     QString usageText_;

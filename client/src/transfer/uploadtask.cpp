@@ -8,6 +8,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
+#include <QUuid>
 
 #include <functional>
 
@@ -24,7 +25,12 @@ const int kSpeedWindowMs = 3000;
 
 UploadTask::UploadTask(ApiClient* api, qint64 parentId, const QString& localPath,
                        const QString& remoteName, QObject* parent)
-    : QObject(parent), api_(api), parentId_(parentId), localPath_(localPath), remoteName_(remoteName) {}
+    : QObject(parent),
+      api_(api),
+      parentId_(parentId),
+      localPath_(localPath),
+      remoteName_(remoteName),
+      id_(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 
 UploadTask::~UploadTask() {
     canceled_ = true;

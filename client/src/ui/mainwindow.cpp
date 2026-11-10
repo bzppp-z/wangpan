@@ -19,6 +19,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPoint>
 #include <QProgressBar>
 #include <QPushButton>
@@ -37,14 +38,31 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <functional>
+
 #include "apiclient.h"
-#include "transfer/downloadtask.h"
-#include "transfer/transferutil.h"
+#include "transfer/transfermanager.h"
 #include "ui/previewpanel.h"
 #include "ui/theme.h"
-#include "ui/uploadcontroller.h"
+#include "ui/transferpanel.h"
 
 namespace {
+
+// 底部 32 高摘要行：整行可点击，回调由主窗口注入。
+class TransferBar : public QFrame {
+public:
+    explicit TransferBar(QWidget* parent = nullptr) : QFrame(parent) {}
+
+    std::function<void()> onClick;
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override {
+        QFrame::mousePressEvent(event);
+        if (onClick) {
+            onClick();
+        }
+    }
+};
 
 // 以 1024 进制格式化，保留一位小数；不足 1 KB 显示整数字节。
 QString formatSize(qint64 bytes) {
@@ -70,10 +88,15 @@ QString formatTime(qint64 seconds) {
 MainWindow::MainWindow(ApiClient* api, QWidget* parent)
     : QMainWindow(parent),
       api_(api),
-      uploads_(nullptr),
-      download_(nullptr),
+      transfers_(nullptr),
+      transferPanel_(nullptr),
+      transferBar_(nullptr),
+      transferSummaryLabel_(nullptr),
+      transferArrow_(nullptr),
+      transferExpanded_(false),
       previewPanel_(nullptr),
       splitter_(nullptr),
+      vSplitter_(nullptr),
       previewLayoutBucket_(-1),
       currentId_(0),
       currentItem_(nullptr),
@@ -84,10 +107,6 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
       fileModel_(nullptr),
       breadcrumbLayout_(nullptr),
       statusLabel_(nullptr),
-      uploadLabel_(nullptr),
-      uploadBar_(nullptr),
-      downloadLabel_(nullptr),
-      downloadBar_(nullptr),
       quotaBar_(nullptr),
       downloadButton_(nullptr),
       transientStatus_(false),
@@ -97,18 +116,22 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
     setMinimumSize(1024, 640);
     setAcceptDrops(true);
 
+    transfers_ = new TransferManager(api_, this);
     buildUi();
 
-    uploads_ = new UploadController(api_, this);
-    connect(uploads_, &UploadController::summaryChanged, this, &MainWindow::onUploadSummary);
-    connect(uploads_, &UploadController::taskFinished, this, &MainWindow::onUploadFinished);
-    connect(uploads_, &UploadController::taskFailed, this, &MainWindow::onFailed);
+    connect(transfers_, &TransferManager::summaryChanged, this, &MainWindow::onTransferSummary);
+    connect(transfers_, &TransferManager::uploadCompleted, this, &MainWindow::onUploadCompleted);
+    connect(transfers_, &TransferManager::downloadCompleted, this, &MainWindow::onDownloadCompleted);
+    connect(transfers_, &TransferManager::failed, this, &MainWindow::onFailed);
 
     connect(api_, &ApiClient::filesLoaded, this, &MainWindow::onFilesLoaded);
     connect(api_, &ApiClient::folderCreated, this, &MainWindow::onFolderCreated);
     connect(api_, &ApiClient::failed, this, &MainWindow::onFailed);
     connect(api_, &ApiClient::unauthorized, this, &MainWindow::onUnauthorized);
     connect(api_, &ApiClient::loggedOut, this, &MainWindow::signedOut);
+
+    // 上次未完成的传输：恢复为等待中，由用户点"继续"再开始。
+    transfers_->restorePersisted();
 
     navigateTo(0);
 }
@@ -140,47 +163,23 @@ void MainWindow::buildUi() {
     connect(previewPanel_, &PreviewPanel::downloadRequested, this,
             &MainWindow::onPreviewDownloadRequested);
     connect(previewPanel_, &PreviewPanel::fileMissing, this, &MainWindow::refresh);
-    rootLayout->addWidget(splitter_, 1);
+
+    // 文件区与传输面板上下分栏：面板默认隐藏，展开时用分隔条调整高度（140–320）。
+    vSplitter_ = new QSplitter(Qt::Vertical, central);
+    vSplitter_->setChildrenCollapsible(false);
+    vSplitter_->addWidget(splitter_);
+    transferPanel_ = new TransferPanel(transfers_, vSplitter_);
+    vSplitter_->addWidget(transferPanel_);
+    transferPanel_->hide();  // 收起态只保留底部 32 高摘要行
+    vSplitter_->setStretchFactor(0, 1);
+    vSplitter_->setStretchFactor(1, 0);
+    rootLayout->addWidget(vSplitter_, 1);
+    rootLayout->addWidget(buildTransferBar());
 
     setCentralWidget(central);
 
     statusLabel_ = new QLabel(this);
     statusLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
-
-    // 上传摘要：文字贴着自己的进度条，空闲时两者一起隐藏；配额条固定在最右侧，不随之跳动。
-    uploadLabel_ = new QLabel(this);
-    uploadLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px; margin-right:8px;")
-                                    .arg(theme::kText.name()));
-    uploadLabel_->hide();
-    uploadBar_ = new QProgressBar(this);
-    uploadBar_->setFixedSize(120, 12);
-    uploadBar_->setRange(0, 100);
-    uploadBar_->setValue(0);
-    uploadBar_->setTextVisible(false);
-    uploadBar_->setStyleSheet(
-        QStringLiteral("QProgressBar { background:%1; border:none; border-radius:6px; }"
-                       "QProgressBar::chunk { background:%2; border-radius:6px; }")
-            .arg(theme::kProgressTrack.name())
-            .arg(theme::kPrimary.name()));
-    uploadBar_->hide();
-
-    // 下载摘要：与上传摘要并排，各自带自己的进度条，空闲时成对隐藏。
-    downloadLabel_ = new QLabel(this);
-    downloadLabel_->setStyleSheet(QStringLiteral("color:%1; font-size:12px; margin-left:16px;"
-                                                 " margin-right:8px;")
-                                      .arg(theme::kText.name()));
-    downloadLabel_->hide();
-    downloadBar_ = new QProgressBar(this);
-    downloadBar_->setFixedSize(120, 12);
-    downloadBar_->setRange(0, 100);
-    downloadBar_->setValue(0);
-    downloadBar_->setTextVisible(false);
-    downloadBar_->setStyleSheet(
-        QStringLiteral("QProgressBar { background:%1; border:none; border-radius:6px; }"
-                       "QProgressBar::chunk { background:%2; border-radius:6px; }")
-            .arg(theme::kProgressTrack.name())
-            .arg(theme::kSuccess.name()));
-    downloadBar_->hide();
 
     quotaBar_ = new QProgressBar(this);
     quotaBar_->setFixedSize(120, 12);
@@ -192,14 +191,70 @@ void MainWindow::buildUi() {
                        "QProgressBar::chunk { background:%1; border-radius:6px; }")
             .arg(theme::kPrimary.name()));
     statusBar()->addWidget(statusLabel_, 1);
-    statusBar()->addPermanentWidget(uploadLabel_);
-    statusBar()->addPermanentWidget(uploadBar_);
-    statusBar()->addPermanentWidget(downloadLabel_);
-    statusBar()->addPermanentWidget(downloadBar_);
     statusBar()->addPermanentWidget(quotaBar_);
     statusBar()->setStyleSheet(QStringLiteral("QStatusBar { background:#FFFFFF; border-top:1px solid #E5E6EB; }"
                                               "QStatusBar::item { border:none; }"));
     updateQuota(0, 5LL * 1024 * 1024 * 1024);
+}
+
+QWidget* MainWindow::buildTransferBar() {
+    TransferBar* bar = new TransferBar(this);
+    bar->setObjectName(QStringLiteral("transferBar"));
+    bar->setFixedHeight(32);
+    bar->setCursor(Qt::PointingHandCursor);
+    bar->setStyleSheet(QStringLiteral("QFrame#transferBar { background:#FAFBFC;"
+                                      " border-top:1px solid #E5E6EB; }"));
+    QHBoxLayout* layout = new QHBoxLayout(bar);
+    layout->setContentsMargins(16, 0, 16, 0);
+    layout->setSpacing(8);
+
+    transferSummaryLabel_ = new QLabel(bar);
+    transferSummaryLabel_->setStyleSheet(
+        QStringLiteral("color:%1; font-size:12px;").arg(theme::kText.name()));
+    transferArrow_ = new QLabel(QStringLiteral("▴"), bar);
+    transferArrow_->setStyleSheet(
+        QStringLiteral("color:%1; font-size:12px;").arg(theme::kTextMuted.name()));
+
+    layout->addWidget(transferSummaryLabel_);
+    layout->addStretch();
+    layout->addWidget(transferArrow_);
+    bar->onClick = [this]() { setTransferExpanded(!transferExpanded_); };
+    bar->hide();
+    transferBar_ = bar;
+    return bar;
+}
+
+void MainWindow::onTransferSummary(const QString& text, bool anyActive) {
+    Q_UNUSED(anyActive);
+    if (transferBar_ == nullptr) {
+        return;
+    }
+    if (text.isEmpty()) {
+        transferBar_->hide();
+        setTransferExpanded(false);
+        return;
+    }
+    transferSummaryLabel_->setText(text);
+    transferBar_->show();
+    transferArrow_->setText(transferExpanded_ ? QStringLiteral("▾") : QStringLiteral("▴"));
+}
+
+void MainWindow::setTransferExpanded(bool expanded) {
+    if (transferPanel_ == nullptr || vSplitter_ == nullptr) {
+        return;
+    }
+    transferExpanded_ = expanded && !transfers_->isEmpty();
+    if (transferExpanded_) {
+        transferPanel_->show();
+        const int total = vSplitter_->height();
+        const int panelHeight = qBound(140, 180, 320);
+        vSplitter_->setSizes(QList<int>() << qMax(320, total - panelHeight) << panelHeight);
+    } else {
+        transferPanel_->hide();
+    }
+    if (transferArrow_ != nullptr) {
+        transferArrow_->setText(transferExpanded_ ? QStringLiteral("▾") : QStringLiteral("▴"));
+    }
 }
 
 QWidget* MainWindow::buildToolBar() {
@@ -301,6 +356,7 @@ QWidget* MainWindow::buildFilePanel() {
         QStringList() << QStringLiteral("名称") << QStringLiteral("大小") << QStringLiteral("修改时间"));
 
     table_ = new QTableView(panel);
+    table_->setObjectName(QStringLiteral("fileTable"));
     table_->setModel(fileModel_);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -574,28 +630,22 @@ void MainWindow::createFolder() {
 }
 
 void MainWindow::logout() {
-    uploads_->cancelAll();
-    if (download_ != nullptr) {
-        download_->cancel();
-        download_->deleteLater();
-        download_ = nullptr;
-        downloadLabel_->hide();
-        downloadBar_->hide();
-    }
+    transfers_->cancelAll();
+    setTransferExpanded(false);
     api_->logout();
 }
 
 void MainWindow::uploadFiles() {
     const QStringList paths = QFileDialog::getOpenFileNames(this, QStringLiteral("选择要上传的文件"));
     if (!paths.isEmpty()) {
-        uploads_->addPaths(currentId_, paths);
+        transfers_->addPaths(currentId_, paths);
     }
 }
 
 void MainWindow::uploadFolder() {
     const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择要上传的文件夹"));
     if (!dir.isEmpty()) {
-        uploads_->addPaths(currentId_, QStringList() << dir);
+        transfers_->addPaths(currentId_, QStringList() << dir);
     }
 }
 
@@ -631,23 +681,6 @@ void MainWindow::startDownload() {
     const QString remoteName = item->text();
     const qint64 size = item->data(Qt::UserRole + 2).toLongLong();
 
-    // 本阶段同时只有一个下载作业：同一文件处于暂停态时点"下载"就是续传。
-    if (download_ != nullptr) {
-        if (download_->remoteId() == remoteId && download_->state() == DownloadTask::Paused) {
-            download_->resume();
-            showStatusMessage(QStringLiteral("继续下载：%1").arg(remoteName), false);
-            return;
-        }
-        if (download_->state() == DownloadTask::Running || download_->state() == DownloadTask::Verifying) {
-            showStatusMessage(QStringLiteral("已有下载任务正在进行"), true);
-            return;
-        }
-        if (download_->state() == DownloadTask::Paused) {
-            // 上一轮暂停的是别的文件：放弃它（删除 .part）再开新任务。
-            download_->cancel();
-        }
-    }
-
     QSettings settings;
     QString dir = settings.value(QStringLiteral("download/lastDir")).toString();
     if (dir.isEmpty() || !QDir(dir).exists()) {
@@ -675,55 +708,8 @@ void MainWindow::startDownload() {
     }
     settings.setValue(QStringLiteral("download/lastDir"), QFileInfo(path).absolutePath());
 
-    download_ = new DownloadTask(api_, remoteId, remoteName, size, path, this);
-    connect(download_, &DownloadTask::progress, this, &MainWindow::onDownloadProgress);
-    connect(download_, &DownloadTask::interrupted, this, &MainWindow::onDownloadInterrupted);
-    connect(download_, &DownloadTask::finished, this, &MainWindow::onDownloadFinished);
-    download_->start();
-}
-
-void MainWindow::onDownloadProgress(qint64 received, qint64 total, qint64 bytesPerSec) {
-    if (download_ == nullptr || downloadLabel_ == nullptr) {
-        return;
-    }
-    int percent = total > 0 ? static_cast<int>(received * 100 / total) : 0;
-    percent = qBound(0, percent, 100);
-    downloadLabel_->setText(QStringLiteral("下载中 · %1 %2% · %3")
-                                .arg(download_->remoteName())
-                                .arg(percent)
-                                .arg(TransferUtil::formatSpeed(bytesPerSec)));
-    downloadLabel_->show();
-    downloadBar_->setValue(percent);
-    downloadBar_->show();
-}
-
-void MainWindow::onDownloadInterrupted(const QString& message) {
-    if (download_ == nullptr || downloadLabel_ == nullptr) {
-        return;
-    }
-    downloadLabel_->setText(
-        QStringLiteral("下载已暂停 · %1 · %2").arg(download_->remoteName(), message));
-    downloadLabel_->show();
-    downloadBar_->show();
-    showStatusMessage(message, true);
-}
-
-void MainWindow::onDownloadFinished() {
-    DownloadTask* task = download_;
-    if (task == nullptr) {
-        return;
-    }
-    download_ = nullptr;
-    downloadLabel_->hide();
-    downloadBar_->hide();
-    if (task->state() == DownloadTask::Completed) {
-        showStatusMessage(
-            QStringLiteral("下载完成：%1").arg(QFileInfo(task->savePath()).fileName()), false);
-    } else if (task->state() == DownloadTask::Failed) {
-        showStatusMessage(QStringLiteral("下载失败：%1").arg(task->errorText()), true);
-    }
-    task->deleteLater();
-    updateDownloadAction();
+    transfers_->addDownload(remoteId, remoteName, size, path);
+    showStatusMessage(QStringLiteral("已加入下载队列：%1").arg(remoteName), false);
 }
 
 void MainWindow::openPreview(QStandardItem* item) {
@@ -813,35 +799,20 @@ void MainWindow::dropEvent(QDropEvent* event) {
         return;
     }
     event->acceptProposedAction();
-    uploads_->addPaths(currentId_, paths);
+    transfers_->addPaths(currentId_, paths);
 }
 
-void MainWindow::onUploadSummary(const QString& text, int percent) {
-    if (uploadLabel_ == nullptr || uploadBar_ == nullptr) {
-        return;
-    }
-    if (text.isEmpty()) {
-        uploadLabel_->hide();
-        uploadBar_->hide();
-        return;
-    }
-    uploadLabel_->setText(text);
-    uploadLabel_->show();
-    if (percent >= 0) {
-        uploadBar_->setValue(qBound(0, percent, 100));
-        uploadBar_->show();
-    } else {
-        uploadBar_->hide();
-    }
-}
-
-void MainWindow::onUploadFinished(qint64 fileId, qint64 targetParentId, const QString& finalName) {
+void MainWindow::onUploadCompleted(qint64 fileId, qint64 targetParentId, const QString& finalName) {
     showStatusMessage(QStringLiteral("上传完成：%1").arg(finalName), false);
     if (targetParentId == currentId_) {
         pendingSelectId_ = fileId;
     }
     // 无论是否在当前目录，都刷新一次以同步配额。
     api_->listFiles(currentId_);
+}
+
+void MainWindow::onDownloadCompleted(const QString& savePath) {
+    showStatusMessage(QStringLiteral("下载完成：%1").arg(QFileInfo(savePath).fileName()), false);
 }
 
 void MainWindow::updateQuota(qint64 usedBytes, qint64 quotaBytes) {

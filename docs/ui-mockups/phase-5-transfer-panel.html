@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网盘客户端 · 传输摘要与传输面板草图（阶段 5）</title>
+<style>
+  :root{
+    --primary:#2D8CF0;
+    --text:#1F2329;
+    --text-muted:#86909C;
+    --border:#E5E6EB;
+    --border-light:#F2F3F5;
+    --success:#00B42A;
+    --danger:#F53F3F;
+    --error-text:#E64545;
+    --progress-track:#EBEEF5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:32px 16px 56px;
+    font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    background:#F2F4F7;color:var(--text);
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+  }
+  h1{font-size:15px;font-weight:600;margin:0 0 4px;}
+  .hint{font-size:12px;color:var(--text-muted);margin:0 0 10px;text-align:center;max-width:860px;line-height:1.7;}
+  .card{width:1100px;background:#fff;border-radius:8px;
+        box-shadow:0 8px 28px rgba(31,35,41,.12),0 2px 6px rgba(31,35,41,.05);overflow:hidden;}
+  .card-title{font-size:12px;color:var(--text-muted);padding:10px 16px;border-bottom:1px solid var(--border-light);}
+  .app{height:700px;display:flex;flex-direction:column;}
+
+  .toolbar{height:48px;display:flex;align-items:center;gap:8px;padding:0 16px;
+           border-bottom:1px solid var(--border);background:#fff;}
+  .btn{height:32px;border-radius:4px;font-size:13px;padding:0 16px;display:flex;align-items:center;
+       border:1px solid var(--border);color:var(--text);background:#fff;cursor:pointer;}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .spacer{flex:1;}
+
+  .body{flex:1;display:flex;min-height:0;}
+  .tree{width:240px;background:#FAFBFC;border-right:1px solid var(--border);padding:8px;font-size:13px;}
+  .tree div{height:28px;display:flex;align-items:center;padding:0 8px;border-radius:4px;}
+  .tree div.on{background:#E8F3FF;color:var(--primary);}
+  .tree div.sub{padding-left:26px;color:var(--text-muted);}
+  .panel{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .crumb{height:40px;display:flex;align-items:center;gap:2px;padding:0 16px;border-bottom:1px solid var(--border-light);
+         font-size:13px;color:var(--text-muted);}
+  .crumb .cur{color:var(--text);}
+  table.files{width:100%;border-collapse:collapse;font-size:13px;}
+  table.files th{background:#FAFAFA;color:var(--text-muted);font-size:12px;font-weight:400;text-align:left;
+     padding:8px 12px;border-bottom:1px solid var(--border);}
+  table.files td{padding:8px 12px;border-bottom:1px solid var(--border-light);}
+
+  /* ---------- 收起态摘要行（32 高） ---------- */
+  .tbar{height:32px;display:flex;align-items:center;gap:8px;padding:0 16px;cursor:pointer;
+        background:#FAFBFC;border-top:1px solid var(--border);font-size:12px;color:var(--text);}
+  .tbar .arrow{margin-left:auto;color:var(--text-muted);font-size:12px;}
+
+  /* ---------- 展开态面板（180 高） ---------- */
+  .tpanel{height:180px;display:flex;flex-direction:column;background:#fff;border-top:1px solid var(--border);}
+  .tpanel-head{height:32px;display:flex;align-items:center;gap:8px;padding:0 16px;
+               border-bottom:1px solid var(--border-light);}
+  .tpanel-head b{font-size:13px;font-weight:600;}
+  .tpanel-head .clear{margin-left:auto;font-size:12px;color:var(--primary);cursor:pointer;}
+  table.transfers{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+  table.transfers th{background:#FAFAFA;color:var(--text-muted);font-size:11px;font-weight:400;
+     text-align:left;padding:6px 12px;border-bottom:1px solid var(--border);}
+  table.transfers td{padding:6px 12px;border-bottom:1px solid var(--border-light);
+     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:29px;}
+  .prog{height:12px;border-radius:6px;background:var(--progress-track);position:relative;overflow:hidden;}
+  .prog i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--primary);}
+  .prog span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+             font-size:10px;color:var(--text);}
+  .st-running{color:var(--primary);}
+  .st-waiting{color:var(--text);}
+  .st-paused,.st-canceled{color:var(--text-muted);}
+  .st-done{color:var(--success);}
+  .st-fail{color:var(--danger);}
+
+  .statusbar{height:30px;display:flex;align-items:center;padding:0 12px;
+             border-top:1px solid var(--border);background:#fff;font-size:12px;color:var(--text-muted);}
+  .quota-track{width:120px;height:12px;border-radius:6px;background:var(--progress-track);flex:none;margin-left:auto;overflow:hidden;}
+  .quota-fill{height:100%;border-radius:6px;background:var(--primary);}
+
+  .note{font-size:12px;color:var(--text-muted);padding:8px 16px 12px;line-height:1.8;border-top:1px solid var(--border-light);}
+  .note b{color:var(--text);font-weight:600;}
+  .empty{flex:1;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text-muted);}
+</style>
+</head>
+<body>
+  <h1>阶段 5 · 传输摘要行与传输面板</h1>
+  <p class="hint">
+    收起时窗口底部只有 32 高的一行摘要（左文字、右箭头），点击展开 180 高的传输列表；
+    展开后列表位于文件列表下方、状态栏上方，分隔条可拖动（140–320）。无任务时整行与面板一起隐藏。
+  </p>
+
+  <div class="card">
+    <div class="card-title">状态 1 · 收起态（底部 32 高：传输：2 进行中 · 1 等待 · 3.4 MB/s）</div>
+    <div class="app">
+      <div class="toolbar">
+        <div class="btn primary">新建文件夹</div>
+        <div class="btn">上传 ▾</div>
+        <div class="btn">下载</div>
+        <div class="btn">刷新</div>
+        <div class="spacer"></div>
+        <div class="btn">退出登录</div>
+      </div>
+      <div class="body">
+        <div class="tree">
+          <div class="on">我的网盘</div>
+          <div class="sub">课程资料</div>
+          <div class="sub">照片</div>
+          <div class="sub">备份</div>
+        </div>
+        <div class="panel">
+          <div class="crumb"><span>我的网盘</span><span>/</span><span class="cur">备份</span></div>
+          <table class="files">
+            <tr><th>名称</th><th style="width:120px">大小</th><th style="width:160px">修改时间</th></tr>
+            <tr><td>2026-11-09.zip</td><td>128.0 MB</td><td>2026-11-09 21:04</td></tr>
+            <tr><td>说明.txt</td><td>2.1 KB</td><td>2026-11-08 09:12</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="tbar">
+        <span>传输：2 进行中 · 1 等待 · 3.4 MB/s</span>
+        <span class="arrow">▴</span>
+      </div>
+      <div class="statusbar">
+        <span>已用 3.2 GB / 5.0 GB</span>
+        <div class="quota-track"><div class="quota-fill" style="width:64%"></div></div>
+      </div>
+    </div>
+    <div class="note">
+      左边文字 12px <b>#1F2329</b>，右侧箭头 12px <b>#86909C</b>；整行可点击。
+      摘要每 500 ms 汇总一次（3 秒滑动窗口），同时计算每个任务的剩余时间。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">状态 2 · 展开态（180 高：头部 32 + 7 列列表 + 底部摘要行）</div>
+    <div class="app">
+      <div class="toolbar">
+        <div class="btn primary">新建文件夹</div>
+        <div class="btn">上传 ▾</div>
+        <div class="btn">下载</div>
+        <div class="btn">刷新</div>
+        <div class="spacer"></div>
+        <div class="btn">退出登录</div>
+      </div>
+      <div class="body" style="flex:1">
+        <div class="tree">
+          <div class="on">我的网盘</div>
+          <div class="sub">课程资料</div>
+          <div class="sub">照片</div>
+          <div class="sub">备份</div>
+        </div>
+        <div class="panel">
+          <div class="crumb"><span>我的网盘</span><span>/</span><span class="cur">备份</span></div>
+          <table class="files">
+            <tr><th>名称</th><th style="width:120px">大小</th><th style="width:160px">修改时间</th></tr>
+            <tr><td>2026-11-09.zip</td><td>128.0 MB</td><td>2026-11-09 21:04</td></tr>
+            <tr><td>说明.txt</td><td>2.1 KB</td><td>2026-11-08 09:12</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="tpanel">
+        <div class="tpanel-head">
+          <b>传输列表</b>
+          <span class="clear">清空已完成</span>
+        </div>
+        <table class="transfers">
+          <colgroup>
+            <col><col style="width:64px"><col style="width:90px"><col style="width:120px">
+            <col style="width:90px"><col style="width:80px"><col style="width:80px">
+          </colgroup>
+          <tr><th>名称</th><th>方向</th><th>大小</th><th>进度</th><th>速度</th><th>剩余</th><th>状态</th></tr>
+          <tr>
+            <td>作业.zip</td><td>上传 ↑</td><td>128.0 MB</td>
+            <td><div class="prog"><i style="width:62%"></i><span>62%</span></div></td>
+            <td>2.1 MB/s</td><td>00:24</td><td class="st-running">进行中</td>
+          </tr>
+          <tr>
+            <td>照片打包.tar</td><td>下载 ↓</td><td>86.0 MB</td>
+            <td><div class="prog"><i style="width:41%"></i><span>41%</span></div></td>
+            <td>1.3 MB/s</td><td>00:38</td><td class="st-running">进行中</td>
+          </tr>
+          <tr>
+            <td>课程视频.mp4</td><td>上传 ↑</td><td>512.0 MB</td>
+            <td><div class="prog"><i style="width:0%"></i><span>0%</span></div></td>
+            <td>—</td><td>—</td><td class="st-waiting">等待中</td>
+          </tr>
+          <tr>
+            <td>说明书.pdf</td><td>下载 ↓</td><td>12.4 MB</td>
+            <td><div class="prog"><i style="width:17%"></i><span>17%</span></div></td>
+            <td>—</td><td>—</td><td class="st-paused">已暂停</td>
+          </tr>
+          <tr>
+            <td>备份-旧.zip</td><td>上传 ↑</td><td>64.0 MB</td>
+            <td><div class="prog"><i style="width:100%;background:#00B42A"></i><span>100%</span></div></td>
+            <td>—</td><td>—</td><td class="st-done">已完成</td>
+          </tr>
+        </table>
+        <div class="empty">没有传输任务</div>
+      </div>
+      <div class="tbar">
+        <span>传输：2 进行中 · 1 等待 · 3.4 MB/s</span>
+        <span class="arrow">▾</span>
+      </div>
+      <div class="statusbar">
+        <span>已用 3.2 GB / 5.0 GB</span>
+        <div class="quota-track"><div class="quota-fill" style="width:64%"></div></div>
+      </div>
+    </div>
+    <div class="note">
+      列宽：名称拉伸｜方向 <b>64</b>｜大小 <b>90</b>｜进度条 <b>120</b>（条内百分比）｜速度 <b>90</b>｜剩余 <b>80</b>｜状态 <b>80</b>。
+      状态色：进行中 <b>#2D8CF0</b>、已完成 <b>#00B42A</b>、失败 <b>#F53F3F</b>、已暂停/已取消 <b>#86909C</b>、等待中 <b>#1F2329</b>。
+      空态为居中 <b>#86909C</b> 的"没有传输任务"，此时仍保留头部与"清空已完成"。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">状态 3 · 只有终态任务（行内提示与空态共存时的处理）</div>
+    <div class="tpanel" style="height:auto;border-top:none">
+      <div class="tpanel-head">
+        <b>传输列表</b>
+        <span class="clear">清空已完成</span>
+      </div>
+      <table class="transfers">
+        <colgroup>
+          <col><col style="width:64px"><col style="width:90px"><col style="width:120px">
+          <col style="width:90px"><col style="width:80px"><col style="width:80px">
+        </colgroup>
+        <tr><th>名称</th><th>方向</th><th>大小</th><th>进度</th><th>速度</th><th>剩余</th><th>状态</th></tr>
+        <tr>
+          <td>损坏的压缩包.rar</td><td>上传 ↑</td><td>8.0 MB</td>
+          <td><div class="prog"><i style="width:100%;background:#F53F3F"></i><span>100%</span></div></td>
+          <td>—</td><td>—</td><td class="st-fail">失败</td>
+        </tr>
+      </table>
+    </div>
+    <div class="note">
+      失败行悬停显示具体原因（如"空间不足，请先清理文件"）；右键菜单：暂停 / 继续 / 取消 / 重试 / 打开所在位置。
+      重试会重新从 0 开始，上传会重新计算哈希并由服务端秒传/续传。
+    </div>
+  </div>
+</body>
+</html>

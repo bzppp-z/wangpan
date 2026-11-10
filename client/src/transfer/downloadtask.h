@@ -34,6 +34,8 @@ public:
     void cancel();
 
     State state() const { return state_; }
+    // 稳定标识（QUuid），传输队列与持久化按它索引任务。
+    QString id() const { return id_; }
     qint64 remoteId() const { return remoteId_; }
     QString remoteName() const { return remoteName_; }
     QString savePath() const { return savePath_; }
@@ -72,6 +74,7 @@ private:
     ApiClient* api_;
     qint64 remoteId_;
     QString remoteName_;
+    QString id_;
     qint64 size_;
     QString savePath_;
     QString partPath_;

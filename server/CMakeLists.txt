@@ -36,3 +36,8 @@ add_executable(test_auth tests/test_auth.cpp
 target_include_directories(test_auth PRIVATE src third_party)
 target_link_libraries(test_auth PRIVATE SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
 add_test(NAME auth COMMAND test_auth)
+
+add_executable(test_storage tests/test_storage.cpp src/storage/blob.cpp src/util/crypto.cpp)
+target_include_directories(test_storage PRIVATE src third_party)
+target_link_libraries(test_storage PRIVATE OpenSSL::Crypto)
+add_test(NAME storage COMMAND test_storage)

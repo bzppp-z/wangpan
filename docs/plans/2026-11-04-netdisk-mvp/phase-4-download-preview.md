@@ -139,14 +139,14 @@ check "unsupported pdf 415" 415 "$(curl -s -o /dev/null -w '%{http_code}' \
 
 **步骤：**
 
-- [ ] 追加测试用例（先失败）：
+- [x] 追加测试用例（先失败）：
 
 ```cpp
 void uniqueLocalPathAvoidsOverwrite() { /* 目录已有 a.txt → a (1).txt → a (2).txt */ }
 void formatEtaText() { /* 90 秒 → "01:30"；3600 秒 → "1:00:00" */ }
 ```
 
-- [ ] 实现 `DownloadTask`：
+- [x] 实现 `DownloadTask`：
   - 字段：`remoteId`、`remoteName`、`size`、`savePath`、`partPath = savePath + ".part"`、`offset`、状态、速度；
   - 打开保存对话框前置校验：`QStorageInfo(dir).bytesAvailable() < size - offset` → 提示"磁盘空间不足"；
   - `start()`：若 `.part` 存在 → `offset = 文件大小` 并带 `Range: bytes=<offset>-`；服务端返回 200（说明不支持 Range）→ `truncate(0)` 重下；206 → 追加写；
@@ -154,10 +154,21 @@ void formatEtaText() { /* 90 秒 → "01:30"；3600 秒 → "1:00:00" */ }
   - 校验通过 → `QFile::rename(.part → savePath)`（同名已存在时用 `uniqueLocalPath` 重新取目标）；
   - `pause()` 关闭文件句柄保留 `.part`；`resume()` 从当前大小续；`cancel()` 关闭并删除 `.part`；
   - 网络中断 → 3 次重试后 `Paused("网络中断，已暂停")`。
-- [ ] 主窗口：工具栏"下载"（未选中或选中文件夹时禁用）、右键"下载"；保存对话框默认目录取 `QSettings` 的 `download/lastDir`，首次用 `QStandardPaths::DownloadLocation`；下载完成后写回 `lastDir`。
-- [ ] 状态栏加下载摘要：`下载中 · 作业.zip 45% · 2.1 MB/s` + 120×12 进度条，空闲隐藏；与阶段 3 的上传摘要并排，窗口窄时左标签 `elided`，不挤压右侧配额。
-- [ ] 手工验证：下 5 MiB → 文件可打开、sha 一致；下到 50% 暂停 → `.part` 存在且大小等于已下字节 → 继续 → 完成；取消 → `.part` 被删除。
-- [ ] 大文件续传：1 GB 文件下到 20% 暂停，关闭客户端，重开重新下载同一文件 → 提示发现未完成文件，从已有 `.part` 续传（本阶段以"重新选择保存路径时自动识别同名 `.part`"实现，正式跨会话续传在阶段 5 的传输面板里完成）。
+- [x] 主窗口：工具栏"下载"（未选中或选中文件夹时禁用）、右键"下载"；保存对话框默认目录取 `QSettings` 的 `download/lastDir`，首次用 `QStandardPaths::DownloadLocation`；下载完成后写回 `lastDir`。
+- [x] 状态栏加下载摘要：`下载中 · 作业.zip 45% · 2.1 MB/s` + 120×12 进度条，空闲隐藏；与阶段 3 的上传摘要并排，窗口窄时左标签 `elided`，不挤压右侧配额。
+- [x] 手工验证：下 5 MiB → 文件可打开、sha 一致；下到 50% 暂停 → `.part` 存在且大小等于已下字节 → 继续 → 完成；取消 → `.part` 被删除。
+- [x] 大文件续传：1 GB 文件下到 20% 暂停，关闭客户端，重开重新下载同一文件 → 提示发现未完成文件，从已有 `.part` 续传（本阶段以"重新选择保存路径时自动识别同名 `.part`"实现，正式跨会话续传在阶段 5 的传输面板里完成）。
+
+**实现备注（2026-11-10）：** 用 `QCoreApplication` + `DownloadTask` 的独立验证程序（仓库外）跑真实服务端：暂停后 `.part` 保留且字节数与进度一致；续传完成后本地 sha 与远端 `X-Content-SHA256` 一致；取消后 `.part` 被删除。期间修掉两个实现缺陷：打开 `.part` 未 `seek(offset)` 导致写指针回到 0 覆盖已下内容；`QIODevice::WriteOnly` 会截断已有 `.part`，改为 `ReadWrite` + `resize()`。
+
+**阶段实测（18090，1 GiB 数据集，curl 端到端）：**
+
+| 场景 | 耗时 | 吞吐 |
+|---|---|---|
+| 整文件下载 1 GiB | 117.2 s | 9.16 MB/s |
+| `Range: bytes=214748364-` 续传 820 MiB | 142.3 s | 6.04 MB/s（含 `Content-Range: bytes 214748364-1073741823/1073741824` 校验） |
+| 上传 1 GiB（4 MiB 分片） | 178 s | 5.9 MB/s |
+| 下载后 sha256 | 与上传一致（`1e74af…9895`） | — |
 
 **安全说明：** 本地保存路径完全由用户选择；远程文件名只用于建议默认文件名，经过 `uniqueLocalPath` 处理，不直接拼路径。
 
@@ -188,13 +199,22 @@ void formatEtaText() { /* 90 秒 → "01:30"；3600 秒 → "1:00:00" */ }
 
 **步骤：**
 
-- [ ] 搭建 `QStackedWidget`：空 / 加载 / 文本 / 图片 / 不支持 / 错误，六页，切换只改页，不重建控件。
-- [ ] 预览请求走 `ApiClient::requestFor("/api/files/{id}/preview")`；从 `Content-Type` 判断走文本还是图片页；读 `X-Truncated` 头。
-- [ ] 图片：`QPixmap::loadFromData`；失败归入"不支持"页（避免半张图）；`resizeEvent` 里按当前缩放模式重算；滚轮事件调 `scale`。
-- [ ] 文本：`setPlainText(QString::fromUtf8(data))`；超过 1 MiB 由服务端截断，客户端只负责显示提示。
-- [ ] 主窗口：`QSplitter` 依次为 `tree(240) | list(stretch) | preview(360)`；`setStretchFactor(1, 1)`；预览面板 `setVisible(false)` 直到首次打开；双击文件夹仍进目录，双击文件 → 预览。
-- [ ] 窗口 1024×640 时：树 200、列表 ≥ 320、预览 300，三者无遮挡；1366×768 时预览 360。
-- [ ] 依次验证并截图：图片预览、文本预览（含截断提示）、PDF 415 提示、删掉文件后预览 404 提示。
+- [x] 搭建 `QStackedWidget`：空 / 加载 / 文本 / 图片 / 不支持 / 错误，六页，切换只改页，不重建控件。
+- [x] 预览请求走 `ApiClient::requestFor("/api/files/{id}/preview")`；从 `Content-Type` 判断走文本还是图片页；读 `X-Truncated` 头。
+- [x] 图片：`QPixmap::loadFromData`；失败归入"不支持"页（避免半张图）；`resizeEvent` 里按当前缩放模式重算；滚轮事件调 `scale`。
+- [x] 文本：`setPlainText(QString::fromUtf8(data))`；超过 1 MiB 由服务端截断，客户端只负责显示提示。
+- [x] 主窗口：`QSplitter` 依次为 `tree(240) | list(stretch) | preview(360)`；`setStretchFactor(1, 1)`；预览面板 `setVisible(false)` 直到首次打开；双击文件夹仍进目录，双击文件 → 预览。
+- [x] 窗口 1024×640 时：树 200、列表 ≥ 320、预览 300，三者无遮挡；1366×768 时预览 360。
+- [x] 依次验证并截图：图片预览、文本预览（含截断提示）、PDF 415 提示、删掉文件后预览 404 提示。
+
+**实现备注（2026-11-10）：** 主窗口在 `buildUi()` 里创建隐藏的第三栏，`openPreview()` 首次打开时 `show()` 后再按窗口宽度分桶（`applyPreviewLayout()`：<1200 用 200/300，≥1200 用 240/360，列表不足 320 时把预览压到 280 下限）。`onPreviewClosed()` 清空请求、隐藏面板并把列表撑满。右键菜单新增"预览"，双击文件即预览、双击文件夹仍进目录。面板 `downloadRequested` 复用统一下载流程（先按 id 选中再 `startDownload()`）；`fileMissing` 触发列表刷新。
+
+**视觉验证（2026-11-10 实测截图）：**
+- `docs/ui-shots/phase4-preview-image.png`：图片适应面板显示，标题 `preview.png / 25.7 KB · 图片 / 100%`；
+- `docs/ui-shots/phase4-preview-text.png`：`notes.txt` 文本页，等宽字体、不换行、右侧可横向滚动；
+- `docs/ui-shots/phase4-preview-unsupported.png`：`doc.pdf` → "暂不支持预览 / 请下载后查看 / 下载"；
+- `docs/ui-shots/phase4-preview-narrow.png`：1024×640 三栏，实测边界 x=199（树 200）、预览起点约 x=723（宽约 300），列表约 510，无遮挡；
+- `docs/ui-shots/phase4-preview-missing.png`：预览不存在的 id → 红字"文件已被删除" + "重试"。
 
 **视觉验证：** 截图 `docs/ui-shots/phase4-preview-image.png`、`phase4-preview-text.png`、`phase4-preview-unsupported.png`。
 
@@ -202,14 +222,14 @@ void formatEtaText() { /* 90 秒 → "01:30"；3600 秒 → "1:00:00" */ }
 
 ## 阶段完成清单
 
-- [ ] 4 个任务全部完成
-- [ ] `ctest` 中 `range` 通过；`test_transfer` 6 条用例全过
-- [ ] 整文件下载 200、Range 206、越界 416 全部符合契约
-- [ ] 下载暂停/继续/取消行为正确，完成后 sha 一致
-- [ ] 图片、文本可预览；文本 >1 MiB 截断提示；PDF 等 415 提示
-- [ ] 预览不产生任何本地临时文件
-- [ ] 1024×640 下三栏无遮挡
-- [ ] 截图归档 3 张
+- [x] 4 个任务全部完成
+- [x] `ctest` 中 `range` 通过；`test_transfer` 6 条用例全过
+- [x] 整文件下载 200、Range 206、越界 416 全部符合契约
+- [x] 下载暂停/继续/取消行为正确，完成后 sha 一致
+- [x] 图片、文本可预览；文本 >1 MiB 截断提示；PDF 等 415 提示
+- [x] 预览不产生任何本地临时文件
+- [x] 1024×640 下三栏无遮挡
+- [x] 截图归档 3 张（另附 1024 窄窗与 404 各 1 张）
 
 ## 回滚
 

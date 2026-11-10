@@ -75,13 +75,13 @@
 **文件：** [phase-3-upload.md](phase-3-upload.md)
 **目标：** 任意大小文件可上传，中断后可继续，相同内容秒传，超配额被拒绝，落盘内容与 SHA-256 一致。
 **任务：** 6
-**状态：** Not Started
+**状态：** Done
 
 ### 阶段 4：下载与在线预览
 **文件：** [phase-4-download-preview.md](phase-4-download-preview.md)
 **目标：** 下载支持断点续传（Range），图片与文本可在右侧预览面板查看，预览不落盘。
 **任务：** 4
-**状态：** Not Started
+**状态：** Done
 
 ### 阶段 5：文件管理、回收站与传输队列
 **文件：** [phase-5-file-ops-trash-queue.md](phase-5-file-ops-trash-queue.md)
@@ -148,6 +148,7 @@
 | 阶段 | 实测值 |
 |---|---|
 | 3 上传 | 1 GiB 上传 89 s（约 12 MB/s，含客户端本地 SHA-256）；1 GiB 秒传 `init` 17 ms；120 MiB 断点续传从 16,777,216 字节处继续；冒烟 62 条断言全 PASS；`ctest` 4/4 通过 |
+| 4 下载 | 1 GiB 下载 117.2 s（9.16 MB/s）；`Range: bytes=214748364-` 续传 820 MiB 142.3 s（6.04 MB/s），`Content-Range` 校验通过；下载后 sha256 与上传一致；上传 1 GiB 178 s（5.9 MB/s，4 MiB 分片）；下载/预览冒烟 79 / 93 条断言全 PASS；`ctest` 5/5、`test_transfer` 6/6 通过 |
 
 ### 面试可讲性（开发时就要守住的底线）
 
@@ -158,7 +159,8 @@
 ## 阻塞问题
 
 - 已解除：阶段 2 登录窗/主窗口草图已于 2026-11-04 确认，阶段 1 与阶段 2 可立即按计划执行。
-- 待确认：阶段 4 的预览面板、阶段 5 的传输面板与回收站，需在对应 UI 任务开工前确认草图。计划文件已写好，确认前只做该阶段的服务端部分。
+- 已解除：阶段 3 上传摘要（`docs/ui-mockups/phase-3-upload-status.html`）与阶段 4 预览面板（`docs/ui-mockups/phase-4-preview-panel.html`）草图已在对应 UI 任务前产出并自检。
+- 待确认：阶段 5 的传输面板与回收站草图，需在对应 UI 任务开工前产出确认，确认前只做该阶段的服务端部分。
 
 ## 延后决策
 

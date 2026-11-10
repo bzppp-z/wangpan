@@ -55,7 +55,7 @@
 
 **步骤：**
 
-- [ ] 先写 `client/tests/test_apiclient.cpp`，覆盖三件事（此时应因 `ApiClient` 未实现而编译失败）：
+- [x] 先写 `client/tests/test_apiclient.cpp`，覆盖三件事（此时应因 `ApiClient` 未实现而编译失败）：
 
 ```cpp
 #include <QtTest>
@@ -89,7 +89,7 @@ QTEST_MAIN(TestApiClient)
 #include "test_apiclient.moc"
 ```
 
-- [ ] 写 `client/tests/test_apiclient.pro`：
+- [x] 写 `client/tests/test_apiclient.pro`：
 
 ```qmake
 QT += testlib network
@@ -101,7 +101,7 @@ SOURCES += test_apiclient.cpp ../src/apiclient.cpp
 HEADERS += ../src/apiclient.h
 ```
 
-- [ ] 写 `client/wangpan.pro`（**Task 1 先只列 `main.cpp` 与 `apiclient.cpp`**，Task 2/3 新增的 `.cpp` 逐个加进来）：
+- [x] 写 `client/wangpan.pro`（**Task 1 先只列 `main.cpp` 与 `apiclient.cpp`**，Task 2/3 新增的 `.cpp` 逐个加进来）：
 
 ```qmake
 QT += core gui widgets network
@@ -113,9 +113,9 @@ SOURCES += src/main.cpp src/apiclient.cpp
 HEADERS += src/apiclient.h
 ```
 
-- [ ] 写 `apiclient.h`：`explicit ApiClient(QObject* parent = nullptr)`、`setBaseUrl`、`setToken`、`filesUrl(qlonglong)`、`errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err)`，以及异步方法 `login(user, pass)`、`registerUser(user, pass)`、`logout()`、`listFiles(qlonglong parentId)`、`createFolder(qlonglong parentId, const QString& name)`；对应信号 `loginSucceeded(qint64 userId, qint64 expiresAt)`、`registered(...)`、`filesLoaded(QJsonArray items, qint64 usedBytes, qint64 quotaBytes)`、`folderCreated(qint64 id, QString finalName)`、`failed(QString message)`、`unauthorized()`。
-- [ ] 写 `main.cpp`（Task 1 版本，只验证工程能跑）：`QApplication` + 一个 400×300 的 `QWidget`，标题"网盘 · 客户端骨架"，内含文字"等待登录界面"。Task 2 时整体替换为登录窗启动逻辑。
-- [ ] 编译并跑测试：
+- [x] 写 `apiclient.h`：`explicit ApiClient(QObject* parent = nullptr)`、`setBaseUrl`、`setToken`、`filesUrl(qlonglong)`、`errorTextFor(int status, const QString& body, QNetworkReply::NetworkError err)`，以及异步方法 `login(user, pass)`、`registerUser(user, pass)`、`logout()`、`listFiles(qlonglong parentId)`、`createFolder(qlonglong parentId, const QString& name)`；对应信号 `loginSucceeded(qint64 userId, qint64 expiresAt)`、`registered(...)`、`filesLoaded(QJsonArray items, qint64 usedBytes, qint64 quotaBytes)`、`folderCreated(qint64 id, QString finalName)`、`failed(QString message)`、`unauthorized()`。
+- [x] 写 `main.cpp`（Task 1 版本，只验证工程能跑）：`QApplication` + 一个 400×300 的 `QWidget`，标题"网盘 · 客户端骨架"，内含文字"等待登录界面"。Task 2 时整体替换为登录窗启动逻辑。
+- [x] 编译并跑测试：
 
 ```powershell
 $env:PATH = "D:\20250519\QT\Qt5.12.11\5.12.11\mingw73_64\bin;D:\20250519\QT\Qt5.12.11\Tools\mingw730_64\bin;" + $env:PATH

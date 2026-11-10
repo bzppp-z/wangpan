@@ -8,9 +8,11 @@ build/
 *.dylib
 
 # Qt 构建产物
-client/release/
-client/debug/
+client/**/release/
+client/**/debug/
 Makefile
+Makefile.*
+target_wrapper.bat
 *.pro.user
 .qmake.stash
 moc_*.cpp

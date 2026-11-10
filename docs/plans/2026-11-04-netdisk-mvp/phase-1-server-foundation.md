@@ -24,7 +24,7 @@
 
 **步骤：**
 
-- [ ] 先写 `scripts/smoke.sh` 的健康检查段落，运行，确认当前失败（服务端还不存在）。
+- [x] 先写 `scripts/smoke.sh` 的健康检查段落，运行，确认当前失败（服务端还不存在）。
 
 ```bash
 #!/usr/bin/env bash
@@ -49,7 +49,7 @@ echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]
 ```
 
-- [ ] 创建 `server/CMakeLists.txt`（C++14，链接 sqlite3 / OpenSSL / pthread，测试用 CTest）：
+- [x] 创建 `server/CMakeLists.txt`（C++14，链接 sqlite3 / OpenSSL / pthread，测试用 CTest）：
 
 ```cmake
 cmake_minimum_required(VERSION 3.16)
@@ -80,11 +80,11 @@ enable_testing()
 # add_test(NAME schema COMMAND test_schema)
 ```
 
-- [ ] 写 `server/src/config.h` / `config.cpp`：`Config` 含 `port`（默认 8080）、`bind_addr`（默认 `127.0.0.1`）、`data_dir`（默认 `./data`）、`chunk_size`（默认 4 MiB）、`quota_bytes`（默认 5 GiB）；`parse_args(argc, argv, Config&, std::string& err)` 支持 `--port`、`--bind`、`--data-dir`。非法端口（1–65535 之外）返回错误。
-- [ ] 写 `server/src/log.h`：`log_info/log_warn/log_error` 输出 `[时间][级别] 消息` 到 stdout 与 stderr，**不打印密码、token、请求体**。
-- [ ] 写 `server/src/api/respond.h`：`json_ok(...)`、`json_error(status, code, message)`，错误体统一为 `{"error":"<code>","message":"<中文提示>"}`。
-- [ ] 写 `server/src/main.cpp`：解析参数 → 创建数据目录 → 注册 `GET /api/health` 返回 `{"ok":true,"version":"0.1"}` → `svr.listen(bind, port)`；启动时打印实际监听地址与数据目录。
-- [ ] 编译并启动：
+- [x] 写 `server/src/config.h` / `config.cpp`：`Config` 含 `port`（默认 8080）、`bind_addr`（默认 `127.0.0.1`）、`data_dir`（默认 `./data`）、`chunk_size`（默认 4 MiB）、`quota_bytes`（默认 5 GiB）；`parse_args(argc, argv, Config&, std::string& err)` 支持 `--port`、`--bind`、`--data-dir`。非法端口（1–65535 之外）返回错误。
+- [x] 写 `server/src/log.h`：`log_info/log_warn/log_error` 输出 `[时间][级别] 消息` 到 stdout 与 stderr，**不打印密码、token、请求体**。
+- [x] 写 `server/src/api/respond.h`：`json_ok(...)`、`json_error(status, code, message)`，错误体统一为 `{"error":"<code>","message":"<中文提示>"}`。
+- [x] 写 `server/src/main.cpp`：解析参数 → 创建数据目录 → 注册 `GET /api/health` 返回 `{"ok":true,"version":"0.1"}` → `svr.listen(bind, port)`；启动时打印实际监听地址与数据目录。
+- [x] 编译并启动：
 
 ```bash
 cd /mnt/c/Users/bzp20/Desktop/wangpan
@@ -93,7 +93,7 @@ cmake --build build-wsl -j
 ./build-wsl/wangpan_server --port 18080 --data-dir /tmp/wp-test
 ```
 
-- [ ] 另一个终端运行 `bash scripts/smoke.sh http://127.0.0.1:18080`
+- [x] 另一个终端运行 `bash scripts/smoke.sh http://127.0.0.1:18080`
   - 预期：`PASS: health 200`、`PASS: health body`，退出码 0。
 
 **安全 / 边界说明：** 默认绑定 `127.0.0.1`，避免调试期间暴露到局域网；服务端不使用 root 权限运行。

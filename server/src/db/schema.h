@@ -61,5 +61,7 @@ CREATE TABLE IF NOT EXISTS upload_sessions (
   blob_id INTEGER,
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_resume
+  ON upload_sessions(owner_id, parent_id, sha256, size);
 )SQL";
 }

@@ -13,10 +13,12 @@ set(APP_SOURCES
   src/db/users.cpp
   src/db/sessions.cpp
   src/db/files.cpp
+  src/db/blobs.cpp
   src/storage/blob.cpp
   src/util/crypto.cpp
   src/api/auth.cpp
   src/api/files.cpp
+  src/api/upload.cpp
 )
 
 add_executable(wangpan_server ${APP_SOURCES})

@@ -131,7 +131,7 @@ ctest --test-dir build-wsl --output-on-failure
 
 **步骤：**
 
-- [ ] 先写 `server/tests/test_instant.cpp`（配套桩，预期 `alice owns` 起失败）：
+- [x] 先写 `server/tests/test_instant.cpp`（配套桩，预期 `alice owns` 起失败）：
 
 ```cpp
 #include <cstdio>
@@ -183,7 +183,7 @@ int main() {
 }
 ```
 
-- [ ] 在 `CMakeLists.txt` 追加（与其它测试并列）：
+- [x] 在 `CMakeLists.txt` 追加（与其它测试并列）：
 
 ```cmake
 add_executable(test_instant tests/test_instant.cpp
@@ -193,7 +193,7 @@ target_link_libraries(test_instant PRIVATE SQLite::SQLite3 Threads::Threads)
 add_test(NAME instant COMMAND test_instant)
 ```
 
-- [ ] 跑 `ctest`，确认 `instant` Failed 后提交第 1 个 commit，再追加 `scripts/smoke.sh` 用例（沿用阶段 1 的 `$token`，文件用 5 MiB 随机内容）：
+- [x] 跑 `ctest`，确认 `instant` Failed 后提交第 1 个 commit，再追加 `scripts/smoke.sh` 用例（沿用阶段 1 的 `$token`，文件用 5 MiB 随机内容）：
 
 ```bash
 dd if=/dev/urandom of=/tmp/wp_big.bin bs=1M count=5 status=none
@@ -210,15 +210,16 @@ badsha=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/upload/init" 
 check "invalid sha 400" 400 "$badsha"
 ```
 
-- [ ] 实现 `POST /api/upload/init`：
+- [x] 实现 `POST /api/upload/init`：
   1. 鉴权 → 校验 `parent_id` 归属（404）；
   2. 校验名称（复用阶段 1 规则）、`size`（`0 <= size <= 10 GiB`）、`sha256`（正则 `^[0-9a-f]{64}$`）；
   3. 配额：`used_bytes + size > quota_bytes` → 507 `quota_exceeded`；
   4. 秒传：查"该账户任一 `files` 行（不区分 `deleted_at`、`kind='file'`）的 `blob_id` 对应此 sha"；命中 → 按 R2 取唯一名称、插入新条目、`blobs.refcount + 1` → 201 `instant=true`；
   5. 续传：查 `upload_sessions` 中 `owner_id/parent_id/name/size/sha256` 相同、`created_at >= now - 7d`、且会话目录存在 → 直接返回该会话与 `received`；
   6. 否则删除该账户下同 sha 的过期会话，生成 `session_id`、建目录、插入 `upload_sessions` → 200。
-- [ ] 运行 `ctest`，确认 `instant` 转绿；重跑冒烟，确认 `upload init 200`、`init chunk_count 2`、`invalid sha 400` 三条 PASS。
-- [ ] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
+- [x] 运行 `ctest`，确认 `instant` 转绿；重跑冒烟，确认 `upload init 200`、`init chunk_count 2`、`invalid sha 400` 三条 PASS。
+  - 实测：`schema` / `auth` / `storage` / `instant` 四个测试全 Passed；冒烟 38 条全 PASS（新增 10 条：会话 id 32 位、chunk_count 2、instant=false、received 为空、重复 init 返回同一会话、sha 非法 400、超上限 400、超配额 507 等）。
+- [x] 提交第 2 个 commit（实现 + 冒烟 + 计划勾选），然后 push。
 
 **安全 / 边界说明：** 客户端提交的 `sha256` **只**用于"判断自己是否已拥有"和"合并后比对"，绝不因为"服务器上存在该 sha 的 blob"就跳过上传——否则任何账号都能凭 sha 白拿别人的文件（PRD R10）。
 

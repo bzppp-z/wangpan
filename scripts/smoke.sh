@@ -127,5 +127,40 @@ wait
 CREATED=$(cat /tmp/wp_conc_*.txt 2>/dev/null | grep -c '^201$')
 check "并发注册仅成功 1 次" 1 "$CREATED"
 
+# ===== 上传初始化：新建会话 / 续传 / 参数校验 / 配额 =====
+dd if=/dev/urandom of=/tmp/wp_big.bin bs=1M count=5 status=none
+SHA=$(sha256sum /tmp/wp_big.bin | cut -d' ' -f1)
+INIT=$(curl -s -o /tmp/wp_init.json -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"big.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "upload init 200" 200 "$INIT"
+SID=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_init.json)
+check "init session id 32 位" 32 "${#SID}"
+check_grep "init chunk_count 2" /tmp/wp_init.json '"chunk_count":2'
+check_grep "init instant false" /tmp/wp_init.json '"instant":false'
+check_grep "init received 为空" /tmp/wp_init.json '"received":\[\]'
+
+INIT2=$(curl -s -o /tmp/wp_init2.json -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"big.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "重复 init 200" 200 "$INIT2"
+SID2=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_init2.json)
+check "同名同 sha 返回同一会话" "$SID" "$SID2"
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"x.bin\",\"size\":1,\"sha256\":\"zzz\"}")
+check "sha 非法 400" 400 "$Code"
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"x.bin\",\"size\":10737418241,\"sha256\":\"$SHA\"}")
+check "超过单文件上限 400" 400 "$Code"
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"x.bin\",\"size\":6442450944,\"sha256\":\"$SHA\"}")
+check "超配额 507" 507 "$Code"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

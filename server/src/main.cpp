@@ -9,6 +9,7 @@
 #include "api/auth.h"
 #include "api/files.h"
 #include "api/respond.h"
+#include "api/upload.h"
 #include "config.h"
 #include "db/db.h"
 #include "httplib.h"
@@ -105,6 +106,7 @@ int main(int argc, char** argv) {
 
     auth::register_routes(svr, cfg.quota_bytes);
     api_files::register_routes(svr);
+    api_upload::register_routes(svr, cfg);
 
     log_info("监听地址 http://" + cfg.bind_addr + ":" + std::to_string(cfg.port));
     log_info("数据目录 " + cfg.data_dir);

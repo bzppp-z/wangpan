@@ -191,5 +191,30 @@ bool create_folder(long long owner_id, long long parent_id, const std::string& n
     return false;
 }
 
+bool find_owned_by_sha(long long owner_id, const std::string& sha256, long long& out_file_id,
+                       std::string& err) {
+    // 桩实现：本提交只用于让 test_instant 可编译并「先红」。
+    (void)owner_id;
+    (void)sha256;
+    out_file_id = 0;
+    err.clear();
+    return false;
+}
+
+bool create_file_entry(long long owner_id, long long parent_id, const std::string& desired_name,
+                       long long blob_id, long long size, long long& out_id,
+                       std::string& out_name, std::string& err) {
+    // 桩实现：本提交只用于让 test_instant 可编译并「先红」。
+    (void)owner_id;
+    (void)parent_id;
+    (void)desired_name;
+    (void)blob_id;
+    (void)size;
+    out_id = 0;
+    out_name.clear();
+    err = "尚未实现";
+    return false;
+}
+
 }  // namespace files
 }  // namespace db

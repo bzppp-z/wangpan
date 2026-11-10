@@ -30,5 +30,15 @@ bool find_folder(long long owner_id, long long folder_id, std::string& out_name)
 bool create_folder(long long owner_id, long long parent_id, const std::string& name, long long& out_id,
                    std::string& out_name, std::string& err);
 
+// 该账户是否已拥有某 sha 的内容；回收站内条目也算（PRD R9/R10），用于秒传判定。
+// 命中时把任意一条匹配的 files.id 写入 out_file_id；未命中返回 false 且 err 为空。
+bool find_owned_by_sha(long long owner_id, const std::string& sha256, long long& out_file_id,
+                       std::string& err);
+
+// 为已有内容（blob_id）新建一个文件条目。名称按 R2 自动去重，blob 引用计数由调用方维护。
+bool create_file_entry(long long owner_id, long long parent_id, const std::string& desired_name,
+                       long long blob_id, long long size, long long& out_id,
+                       std::string& out_name, std::string& err);
+
 }  // namespace files
 }  // namespace db

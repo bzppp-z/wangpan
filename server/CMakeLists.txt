@@ -42,3 +42,9 @@ add_executable(test_storage tests/test_storage.cpp src/storage/blob.cpp src/util
 target_include_directories(test_storage PRIVATE src third_party)
 target_link_libraries(test_storage PRIVATE OpenSSL::Crypto)
 add_test(NAME storage COMMAND test_storage)
+
+add_executable(test_instant tests/test_instant.cpp
+  src/db/db.cpp src/db/users.cpp src/db/blobs.cpp src/db/files.cpp)
+target_include_directories(test_instant PRIVATE src third_party)
+target_link_libraries(test_instant PRIVATE SQLite::SQLite3 Threads::Threads)
+add_test(NAME instant COMMAND test_instant)

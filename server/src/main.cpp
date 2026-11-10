@@ -97,6 +97,8 @@ int main(int argc, char** argv) {
     }
 
     httplib::Server svr;
+    // 分片固定 4 MiB，留一倍余量；再大的请求体由 httplib 直接拒绝（413）。
+    svr.set_payload_max_length(8 * 1024 * 1024);
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
         nlohmann::json body;
         body["ok"] = true;

@@ -162,5 +162,87 @@ Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$BASE/api/up
   -d "{\"parent_id\":0,\"name\":\"x.bin\",\"size\":6442450944,\"sha256\":\"$SHA\"}")
 check "超配额 507" 507 "$Code"
 
+# ===== 分片上传 / 状态 / 续传 / 完成 =====
+split -b 4194304 -d -a 1 /tmp/wp_big.bin /tmp/wp_part_
+P0=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X PUT "$BASE/api/upload/$SID/chunks/0" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/octet-stream' \
+  --data-binary @/tmp/wp_part_0)
+check "chunk 0 204" 204 "$P0"
+
+curl -s -o /tmp/wp_status.json --max-time 5 "$BASE/api/upload/$SID" \
+  -H "Authorization: Bearer $TOKEN"
+check_grep "状态收到分片 0" /tmp/wp_status.json '"received":\[0\]'
+
+REINIT=$(curl -s -o /tmp/wp_reinit.json -w '%{http_code}' --max-time 5 \
+  -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"big.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "续传 re-init 200" 200 "$REINIT"
+RSID=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_reinit.json)
+check "续传返回同一会话" "$SID" "$RSID"
+check_grep "续传带 received" /tmp/wp_reinit.json '"received":\[0\]'
+
+P1=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X PUT "$BASE/api/upload/$SID/chunks/1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/octet-stream' \
+  --data-binary @/tmp/wp_part_1)
+check "chunk 1 204" 204 "$P1"
+
+DONE=$(curl -s -o /tmp/wp_done.json -w '%{http_code}' --max-time 20 \
+  -X POST --data '' "$BASE/api/upload/$SID/complete" -H "Authorization: Bearer $TOKEN")
+check "complete 201" 201 "$DONE"
+check_grep "complete size" /tmp/wp_done.json '"size":5242880'
+check_grep "complete dedup false" /tmp/wp_done.json '"dedup":false'
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/api/upload/$SID" \
+  -H "Authorization: Bearer $TOKEN")
+check "完成后再查会话 404" 404 "$Code"
+
+curl -s -o /tmp/wp_list2.json --max-time 5 "$BASE/api/files?parent_id=0" \
+  -H "Authorization: Bearer $TOKEN"
+check_grep "列表含 big.bin" /tmp/wp_list2.json '"name":"big.bin"'
+
+# 秒传：本账户已拥有同一内容，改名再传应立即完成
+INST=$(curl -s -o /tmp/wp_inst.json -w '%{http_code}' --max-time 5 -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"big2.bin\",\"size\":5242880,\"sha256\":\"$SHA\"}")
+check "秒传 201" 201 "$INST"
+check_grep "秒传 instant true" /tmp/wp_inst.json '"instant":true'
+
+# 取消后状态 404
+head -c 1048576 /dev/urandom > /tmp/wp_small.bin
+SHA2=$(sha256sum /tmp/wp_small.bin | cut -d' ' -f1)
+CINIT=$(curl -s -o /tmp/wp_cinit.json -w '%{http_code}' --max-time 5 \
+  -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"cancel.bin\",\"size\":1048576,\"sha256\":\"$SHA2\"}")
+check "待取消会话 init 200" 200 "$CINIT"
+CSID=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_cinit.json)
+
+CANCEL=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE \
+  "$BASE/api/upload/$CSID" -H "Authorization: Bearer $TOKEN")
+check "取消会话 204" 204 "$CANCEL"
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/api/upload/$CSID" \
+  -H "Authorization: Bearer $TOKEN")
+check "取消后状态 404" 404 "$Code"
+
+# 校验值不符：声明 sha 与实际分片内容不一致 → 400，且会话被丢弃
+MINIT=$(curl -s -o /tmp/wp_minit.json -w '%{http_code}' --max-time 5 \
+  -X POST "$BASE/api/upload/init" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":0,\"name\":\"bad.bin\",\"size\":1048576,\"sha256\":\"$SHA2\"}")
+check "错误校验值会话 init 200" 200 "$MINIT"
+MSID=$(sed -n 's/.*"session_id":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_minit.json)
+head -c 1048576 /dev/zero > /tmp/wp_zero.bin
+curl -s -o /dev/null --max-time 10 -X PUT "$BASE/api/upload/$MSID/chunks/0" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/octet-stream' \
+  --data-binary @/tmp/wp_zero.bin
+MDONE=$(curl -s -o /tmp/wp_mdone.json -w '%{http_code}' --max-time 20 \
+  -X POST --data '' "$BASE/api/upload/$MSID/complete" -H "Authorization: Bearer $TOKEN")
+check "校验失败 400" 400 "$MDONE"
+check_grep "校验失败提示" /tmp/wp_mdone.json 'checksum_mismatch'
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/api/upload/$MSID" \
+  -H "Authorization: Bearer $TOKEN")
+check "校验失败后会话已清理 404" 404 "$Code"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

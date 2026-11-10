@@ -236,7 +236,7 @@ check "invalid sha 400" 400 "$badsha"
 
 **步骤：**
 
-- [ ] 追加冒烟用例（先传第 0 片 → 查状态 → 重新 init 验证续传 → 补齐第 1 片 → 完成）：
+- [x] 追加冒烟用例（先传第 0 片 → 查状态 → 重新 init 验证续传 → 补齐第 1 片 → 完成）：
 
 ```bash
 split -b 4194304 -d -a 1 /tmp/wp_big.bin /tmp/wp_part_
@@ -262,16 +262,19 @@ check "complete 201" 201 "$done"
 check_grep "complete size" /tmp/wp_done.json '"size":5242880'
 ```
 
-- [ ] 实现 `PUT .../chunks/{index}`：校验会话归属与有效期 → 校验 `index < chunk_count` → 校验 body 长度等于该片应有长度 → `storage::write_chunk`（重复上传覆盖）→ 204。
-- [ ] 实现 `GET /api/upload/{sid}`：归属校验 → `scan_received` → 200。
-- [ ] 实现 `POST .../complete`：
+- [x] 实现 `PUT .../chunks/{index}`：校验会话归属与有效期 → 校验 `index < chunk_count` → 校验 body 长度等于该片应有长度 → `storage::write_chunk`（重复上传覆盖）→ 204。
+- [x] 实现 `GET /api/upload/{sid}`：归属校验 → `scan_received` → 200。
+- [x] 实现 `POST .../complete`：
   1. 归属与有效期校验；`scan_received` 后若缺分片 → 400 `invalid_chunk`（提示缺第几片）；
   2. `merge_and_hash` 到 `<data_dir>/tmp/<sid>/merged.tmp`；算出的 sha 与 `upload_sessions.sha256` 不符 → 删除会话目录与记录 → 400 `checksum_mismatch`；
   3. 实际大小与声明不符 → 400 `size_mismatch`，同样清理；
   4. 事务内：配额复查 → 按 sha 查/建 blob（`INSERT ... ON CONFLICT(sha256) DO NOTHING` 后再查）→ `refcount + 1` → 按 R2 创建文件条目 → 删除 `upload_sessions` 行；
   5. `commit_blob` 落盘 → 删除会话目录 → 201。
-- [ ] 实现 `DELETE /api/upload/{sid}`：删除记录与目录 → 204。
-- [ ] 追加"取消后状态 404"与"错误校验值 400"两条断言，重跑冒烟全绿。
+  - 实现备注：实际顺序为「配额复查 → merge/哈希 → get_or_create → commit_blob → incref → 建条目 → 删会话」，先落内容再写库，避免崩溃后出现「条目指向不存在内容」。
+- [x] 实现 `DELETE /api/upload/{sid}`：删除记录与目录 → 204。
+- [x] 追加"取消后状态 404"与"错误校验值 400"两条断言，重跑冒烟全绿。
+  - 实测：冒烟 58 条全 PASS；另确认 blob 落盘路径 `blob/6f/f5/<sha256>` 且 `sha256sum` 与上传内容一致，`tmp/` 在完成后为空。
+  - 实测补充：首次上传同一内容时 `dedup=false`，再次 init 同内容返回 201 `instant=true`；分片长度不符返回 400 `chunk_size_mismatch`。
 
 **安全 / 边界说明：** 合并结果必须由服务端计算哈希，客户端的 sha 只做比对；校验失败一律丢弃会话，避免半成品被反复重试写坏磁盘。注册的 blob 行与磁盘文件在极少数崩溃场景可能不一致，启动时不修复，留到阶段 5 的清理任务里只删除"无引用且无文件"的行。
 

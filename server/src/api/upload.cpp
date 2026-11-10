@@ -391,6 +391,289 @@ void handle_init(const httplib::Request& req, httplib::Response& res, const Conf
     api::json_ok(res, out);
 }
 
+// 已接收分片的上传会话上下文。
+struct SessionCtx {
+    std::string id;
+    long long user_id = 0;
+    long long parent_id = 0;
+    long long size = 0;
+    long long chunk_size = 0;
+    long long chunk_count = 0;
+    long long created_at = 0;
+    std::string name;
+    std::string sha256;
+};
+
+// 按 id + 归属读取会话；别人的会话与不存在一律视为不存在。
+bool load_session(const std::string& session_id, long long user_id, SessionCtx& out) {
+    sqlite3* h = db::handle();
+    if (h == nullptr) {
+        return false;
+    }
+    const char* sql =
+        "SELECT owner_id, parent_id, name, size, sha256, chunk_size, chunk_count, created_at"
+        " FROM upload_sessions WHERE id = ? AND owner_id = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_text(stmt, 1, session_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, user_id);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+        out.id = session_id;
+        out.user_id = sqlite3_column_int64(stmt, 0);
+        out.parent_id = sqlite3_column_int64(stmt, 1);
+        out.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        out.size = sqlite3_column_int64(stmt, 3);
+        out.sha256 = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        out.chunk_size = sqlite3_column_int64(stmt, 5);
+        out.chunk_count = sqlite3_column_int64(stmt, 6);
+        out.created_at = sqlite3_column_int64(stmt, 7);
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+// 删除会话记录与临时目录（失败只记日志，不影响响应）。
+void drop_session(const Config& cfg, const std::string& session_id) {
+    std::string err;
+    if (!delete_session_row(session_id, err)) {
+        log_warn("删除上传会话失败：" + err);
+    }
+    if (!storage::remove_tree(session_dir_of(cfg, session_id))) {
+        log_warn("删除上传临时目录失败：" + session_id);
+    }
+}
+
+bool session_expired(const SessionCtx& s) {
+    return s.created_at + kSessionTtlSeconds <= db::now_seconds();
+}
+
+// 鉴权 + 会话归属 + 有效期；失败时已写好 401/404。
+bool require_session(const httplib::Request& req, httplib::Response& res, const Config& cfg,
+                     SessionCtx& out) {
+    long long user_id = 0;
+    if (!auth::resolve(req, user_id)) {
+        api::json_error(res, 401, "unauthorized", "登录已过期，请重新登录");
+        return false;
+    }
+    const std::string session_id = req.matches[1];
+    if (!load_session(session_id, user_id, out)) {
+        api::json_error(res, 404, "session_not_found", "上传会话不存在");
+        return false;
+    }
+    if (session_expired(out)) {
+        drop_session(cfg, out.id);
+        api::json_error(res, 404, "session_not_found", "上传会话已过期");
+        return false;
+    }
+    return true;
+}
+
+// 解析纯数字下标；位数受限，避免 stoll 溢出。
+bool parse_index(const std::string& text, long long& out) {
+    if (text.empty() || text.size() > 9) {
+        return false;
+    }
+    long long value = 0;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c < '0' || c > '9') {
+            return false;
+        }
+        value = value * 10 + (c - '0');
+    }
+    out = value;
+    return true;
+}
+
+void handle_put_chunk(const httplib::Request& req, httplib::Response& res, const Config& cfg) {
+    SessionCtx session;
+    if (!require_session(req, res, cfg, session)) {
+        return;
+    }
+
+    long long index = 0;
+    if (req.matches.size() < 3 || !parse_index(req.matches[2], index)) {
+        api::json_error(res, 400, "invalid_chunk", "分片序号非法");
+        return;
+    }
+    if (index >= session.chunk_count) {
+        api::json_error(res, 400, "invalid_chunk", "分片序号超出范围");
+        return;
+    }
+    const std::int64_t expected =
+        static_cast<std::int64_t>(index) + 1 == session.chunk_count
+            ? session.size - static_cast<std::int64_t>(index) * session.chunk_size
+            : session.chunk_size;
+    if (static_cast<std::int64_t>(req.body.size()) != expected) {
+        api::json_error(res, 400, "chunk_size_mismatch", "分片长度与服务端约定的不一致");
+        return;
+    }
+
+    std::string err;
+    if (!storage::write_chunk(session_dir_of(cfg, session.id), static_cast<int>(index), req.body,
+                              expected, err)) {
+        log_error("写入分片失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    res.status = 204;
+}
+
+void handle_status(const httplib::Request& req, httplib::Response& res, const Config& cfg) {
+    SessionCtx session;
+    if (!require_session(req, res, cfg, session)) {
+        return;
+    }
+    std::vector<int> received;
+    std::string err;
+    if (!storage::scan_received(session_dir_of(cfg, session.id),
+                                static_cast<int>(session.chunk_count), session.chunk_size,
+                                session.size, received, err)) {
+        log_error("扫描分片失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    nlohmann::json out;
+    out["session_id"] = session.id;
+    out["size"] = session.size;
+    out["chunk_size"] = session.chunk_size;
+    out["chunk_count"] = session.chunk_count;
+    out["received"] = received;
+    out["expires_at"] = session.created_at + kSessionTtlSeconds;
+    api::json_ok(res, out);
+}
+
+bool blob_exists(const std::string& path) {
+    struct stat st;
+    return !path.empty() && ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
+void handle_complete(const httplib::Request& req, httplib::Response& res, const Config& cfg) {
+    SessionCtx session;
+    if (!require_session(req, res, cfg, session)) {
+        return;
+    }
+    const std::string dir = session_dir_of(cfg, session.id);
+
+    std::vector<int> received;
+    std::string err;
+    if (!storage::scan_received(dir, static_cast<int>(session.chunk_count), session.chunk_size,
+                                session.size, received, err)) {
+        log_error("扫描分片失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    if (static_cast<long long>(received.size()) != session.chunk_count) {
+        std::string missing = "?";
+        std::size_t cursor = 0;
+        for (int i = 0; i < session.chunk_count; ++i) {
+            if (cursor < received.size() && received[cursor] == i) {
+                ++cursor;
+                continue;
+            }
+            missing = std::to_string(i);
+            break;
+        }
+        api::json_error(res, 400, "invalid_chunk", "缺少第 " + missing + " 片");
+        return;
+    }
+
+    // 合并前再查一次配额：上传期间账户可能又存了别的文件。
+    const long long used = db::used_bytes(session.user_id);
+    const long long quota = db::quota_bytes_of(session.user_id);
+    if (quota > 0 && used + session.size > quota) {
+        api::json_error(res, 507, "quota_exceeded", "空间不足，请先清理文件");
+        return;
+    }
+
+    const std::string merged = dir + "/merged.tmp";
+    std::string sha;
+    if (!storage::merge_and_hash(dir, static_cast<int>(session.chunk_count), session.chunk_size,
+                                 session.size, merged, sha, err)) {
+        log_error("合并分片失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    // 哈希由服务端计算，客户端的 sha 只用于比对；不符一律丢弃会话。
+    if (sha != session.sha256) {
+        log_warn("上传内容校验失败：" + session.id);
+        drop_session(cfg, session.id);
+        api::json_error(res, 400, "checksum_mismatch", "文件内容校验失败，请重新上传");
+        return;
+    }
+    struct stat merged_st;
+    if (::stat(merged.c_str(), &merged_st) != 0 ||
+        static_cast<long long>(merged_st.st_size) != session.size) {
+        drop_session(cfg, session.id);
+        api::json_error(res, 400, "size_mismatch", "文件大小校验失败，请重新上传");
+        return;
+    }
+
+    const bool dedup = blob_exists(storage::blob_path(cfg.data_dir, sha));
+    long long blob_id = 0;
+    if (!db::blobs::get_or_create(sha, session.size, blob_id, err)) {
+        log_error("创建内容记录失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    // 先把内容原子落位，再建数据库条目：崩溃时最多留下无引用的内容文件，
+    // 不会出现"条目指向不存在内容"的坏状态。
+    if (!storage::commit_blob(merged, cfg.data_dir, sha, err)) {
+        log_error("内容落盘失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    if (!db::blobs::incref(blob_id, err)) {
+        log_error("增加引用计数失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+    long long file_id = 0;
+    std::string final_name;
+    if (!db::files::create_file_entry(session.user_id, session.parent_id, session.name, blob_id,
+                                      session.size, file_id, final_name, err)) {
+        log_error("创建文件条目失败：" + err);
+        api::json_error(res, 500, "internal_error", "服务器内部错误");
+        return;
+    }
+
+    std::string cleanup_err;
+    if (!delete_session_row(session.id, cleanup_err)) {
+        log_warn("删除上传会话记录失败：" + cleanup_err);
+    }
+    if (!storage::remove_tree(dir)) {
+        log_warn("删除上传临时目录失败：" + session.id);
+    }
+
+    nlohmann::json out;
+    out["file_id"] = file_id;
+    out["name"] = final_name;
+    out["sha256"] = sha;
+    out["size"] = session.size;
+    out["dedup"] = dedup;
+    api::json_ok(res, out, 201);
+}
+
+void handle_cancel(const httplib::Request& req, httplib::Response& res, const Config& cfg) {
+    long long user_id = 0;
+    if (!auth::resolve(req, user_id)) {
+        api::json_error(res, 401, "unauthorized", "登录已过期，请重新登录");
+        return;
+    }
+    const std::string session_id = req.matches[1];
+    SessionCtx session;
+    if (!load_session(session_id, user_id, session)) {
+        api::json_error(res, 404, "session_not_found", "上传会话不存在");
+        return;
+    }
+    drop_session(cfg, session_id);
+    res.status = 204;
+}
+
 }  // namespace
 
 void register_routes(httplib::Server& svr, const Config& cfg) {
@@ -398,6 +681,22 @@ void register_routes(httplib::Server& svr, const Config& cfg) {
              [&cfg](const httplib::Request& req, httplib::Response& res) {
                  handle_init(req, res, cfg);
              });
+    svr.Put(R"(/api/upload/([0-9a-f]{32})/chunks/([0-9]+))",
+            [&cfg](const httplib::Request& req, httplib::Response& res) {
+                handle_put_chunk(req, res, cfg);
+            });
+    svr.Get(R"(/api/upload/([0-9a-f]{32}))",
+            [&cfg](const httplib::Request& req, httplib::Response& res) {
+                handle_status(req, res, cfg);
+            });
+    svr.Post(R"(/api/upload/([0-9a-f]{32})/complete)",
+             [&cfg](const httplib::Request& req, httplib::Response& res) {
+                 handle_complete(req, res, cfg);
+             });
+    svr.Delete(R"(/api/upload/([0-9a-f]{32}))",
+               [&cfg](const httplib::Request& req, httplib::Response& res) {
+                   handle_cancel(req, res, cfg);
+               });
 }
 
 }  // namespace api_upload

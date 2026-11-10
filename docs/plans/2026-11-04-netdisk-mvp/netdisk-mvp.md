@@ -63,7 +63,7 @@
 **文件：** [phase-1-server-foundation.md](phase-1-server-foundation.md)
 **目标：** 服务端能编译、启动、建库，注册/登录/登出/鉴权/目录列表/新建文件夹全部可用，并通过冒烟脚本验证。
 **任务：** 5
-**状态：** In Progress
+**状态：** Done
 
 ### 阶段 2：Qt 客户端框架与登录、文件列表
 **文件：** [phase-2-qt-client-login.md](phase-2-qt-client-login.md)

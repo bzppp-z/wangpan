@@ -99,5 +99,33 @@ Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   -d '{"parent_id":0,"name":"a/b"}' "$BASE/api/folders")
 check "非法名称 400" 400 "$Code"
 
+# ===== 越权与并发 =====
+Code=$(curl -s -o /tmp/wp_bob.json -w '%{http_code}' --max-time 5 \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"bob","password":"pass12345"}' "$BASE/api/register")
+check "注册 bob 201" 201 "$Code"
+BTOKEN=$(sed -n 's/.*"token":"\([0-9a-f]*\)".*/\1/p' /tmp/wp_bob.json)
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $BTOKEN" "$BASE/api/files?parent_id=$FOLDER_ID")
+check "跨账户访问他人目录 404" 404 "$Code"
+
+Code=$(curl -s -o /tmp/wp_bob_list.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $BTOKEN" "$BASE/api/files?parent_id=0")
+check "bob 列根目录 200" 200 "$Code"
+check_grep "bob 根目录为空" /tmp/wp_bob_list.json '"items":\[\]'
+
+# 并发注册同一用户名：靠 users.username 唯一约束，只应有一个 201
+rm -f /tmp/wp_conc_*.txt
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"dave","password":"pass12345"}' "$BASE/api/register" \
+    > "/tmp/wp_conc_$i.txt" &
+done
+wait
+CREATED=$(cat /tmp/wp_conc_*.txt 2>/dev/null | grep -c '^201$')
+check "并发注册仅成功 1 次" 1 "$CREATED"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

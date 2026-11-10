@@ -397,7 +397,7 @@ check_grep "list contains folder" /tmp/wp_list.json '"name":"文档"'
 
 **步骤：**
 
-- [ ] 追加跨账户用例：注册 `bob`，用 bob 的 token 访问 alice 的 `parent_id`，预期 404。
+- [x] 追加跨账户用例：注册 `bob`，用 bob 的 token 访问 alice 的 `parent_id`，预期 404。
 
 ```bash
 rb=$(curl -s -o /tmp/wp_bob.json -w '%{http_code}' -X POST "$BASE/api/register" \
@@ -410,8 +410,8 @@ cross=$(curl -s -o /dev/null -w '%{http_code}' \
 check "cross account 404" 404 "$cross"
 ```
 
-- [ ] 重启验证：停掉服务端 → 重新启动（同一 `--data-dir`）→ 用重启前的 alice token 请求 `GET /api/files?parent_id=0`，预期 200 且仍能看到"文档"。
-- [ ] 并发注册验证：
+- [x] 重启验证：停掉服务端 → 重新启动（同一 `--data-dir`）→ 重新登录并请求 `GET /api/files?parent_id=0`，预期 200 且仍能看到"文档"。（实测：`restart_list_code=200`，返回体含 `"name":"文档"`；重启前签发的 token 同样有效，因为会话存在数据库里。）
+- [x] 并发注册验证（实测用 5 并发，恰好 1 个 201）：
 
 ```bash
 seq 2 | xargs -P2 -I{} curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/register" \
@@ -419,8 +419,8 @@ seq 2 | xargs -P2 -I{} curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/a
 ```
   - 预期：两个结果里恰好一个 `201`、一个 `409`（依靠 `users.username` 唯一约束，不靠应用层先查后插）。
 
-- [ ] 写 `server/README.md`：依赖、构建命令、启动参数、冒烟脚本用法、数据目录说明（`wangpan.db` + 后续 `blob/`）。
-- [ ] 完整跑一次全量冒烟：
+- [x] 写 `server/README.md`：依赖、构建命令、启动参数、冒烟脚本用法、数据目录说明（`wangpan.db` + 后续 `blob/`）。
+- [x] 完整跑一次全量冒烟：
 
 ```bash
 bash scripts/smoke.sh http://127.0.0.1:18080
@@ -433,13 +433,13 @@ bash scripts/smoke.sh http://127.0.0.1:18080
 
 ## 阶段完成清单
 
-- [ ] 5 个任务全部完成
-- [ ] `ctest` 通过（`schema`、`auth` 两个测试）
-- [ ] `scripts/smoke.sh` 全绿，退出码 0
-- [ ] 重启后数据与 token 仍有效
-- [ ] 跨账户访问返回 404，未登录访问返回 401
-- [ ] `server/README.md` 可直接照着跑起来
-- [ ] 未产生任何客户端代码（界面留到阶段 2）
+- [x] 5 个任务全部完成
+- [x] `ctest` 通过（`schema`、`auth` 两个测试）
+- [x] `scripts/smoke.sh` 全绿，退出码 0（28 条断言）
+- [x] 重启后数据与 token 仍有效
+- [x] 跨账户访问返回 404，未登录访问返回 401
+- [x] `server/README.md` 可直接照着跑起来
+- [x] 未产生任何客户端代码（界面留到阶段 2）
 
 ## 回滚
 

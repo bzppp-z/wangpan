@@ -16,7 +16,8 @@ SOURCES += \
     src/ui/loginwindow.cpp \
     src/ui/mainwindow.cpp \
     src/ui/previewpanel.cpp \
-    src/ui/transferpanel.cpp
+    src/ui/transferpanel.cpp \
+    src/ui/trashdialog.cpp
 HEADERS += \
     src/apiclient.h \
     src/transfer/transferutil.h \
@@ -28,4 +29,5 @@ HEADERS += \
     src/ui/loginwindow.h \
     src/ui/mainwindow.h \
     src/ui/previewpanel.h \
-    src/ui/transferpanel.h
+    src/ui/transferpanel.h \
+    src/ui/trashdialog.h

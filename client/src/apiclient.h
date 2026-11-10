@@ -44,12 +44,26 @@ public:
     void logout();
     void listFiles(qlonglong parentId);
     void createFolder(qlonglong parentId, const QString& name);
+    // 单条目重命名；服务端冲突时按 R2 自动改名，最终名称见 renamed()。
+    void renameFile(qlonglong id, const QString& name);
+    // 软删除（连同子项进回收站），不扣配额。
+    void deleteFile(qlonglong id);
+    void listTrash();
+    void restoreTrash(qlonglong id);
+    void purgeTrash(qlonglong id);
+    void clearTrash();
 
 signals:
     void loginSucceeded(qint64 userId, qint64 expiresAt);
     void registered(qint64 userId, qint64 expiresAt);
     void filesLoaded(const QJsonArray& items, qint64 usedBytes, qint64 quotaBytes);
     void folderCreated(qint64 id, const QString& finalName);
+    void renamed(qint64 id, const QString& finalName);
+    void deleted(qint64 id);
+    void trashLoaded(const QJsonArray& items);
+    void trashRestored(qint64 id, const QString& finalName, qint64 parentId);
+    void trashPurged(qint64 id);
+    void trashCleared();
     void loggedOut();
     // 可展示给用户的失败原因（服务端 message 或预设文案）。
     void failed(const QString& message);
@@ -63,6 +77,10 @@ private:
                  const std::function<void(const QJsonObject&)>& onSuccess);
     void sendPost(const QNetworkRequest& req, const QByteArray& body, bool sessionEndpoint,
                   const std::function<void(const QJsonObject&)>& onSuccess);
+    // PATCH / DELETE：显式带 body（可为空），保证请求有 Content-Length。
+    void sendCustom(const QNetworkRequest& req, const QByteArray& verb, const QByteArray& body,
+                    bool sessionEndpoint,
+                    const std::function<void(const QJsonObject&)>& onSuccess);
     // 统一处理网络错误 / 401 / 失败响应；成功时回调已解析的 JSON。
     // sessionEndpoint 为 true 时，401 视为会话失效并发 unauthorized()。
     void finish(QNetworkReply* reply, bool sessionEndpoint,

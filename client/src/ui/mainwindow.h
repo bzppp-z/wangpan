@@ -50,6 +50,11 @@ private slots:
     void uploadFolder();
     void startDownload();
     void updateDownloadAction();
+    void renameSelected();
+    void deleteSelected();
+    void openTrash();
+    void onRenamed(qint64 id, const QString& finalName);
+    void onDeleted(qint64 id);
     void openPreviewForSelected();
     void onPreviewClosed();
     void onPreviewDownloadRequested(qint64 fileId, const QString& name, qint64 size);
@@ -80,6 +85,10 @@ private:
     void selectRowById(qint64 id);
     // 当前选中的是文件时返回其条目，文件夹或未选中返回 nullptr。
     QStandardItem* selectedFileItem() const;
+    // 恰好选中一行时返回该行名称列条目（F2 重命名使用）；否则 nullptr。
+    QStandardItem* singleSelectedItem() const;
+    // 删除的是当前所在目录或其祖先时，需要回到根目录。
+    bool isAncestorOfCurrent(qint64 id) const;
     // 双击文件 / 右键"预览"：打开右侧面板并请求预览。
     void openPreview(QStandardItem* item);
     // 打开预览面板时按窗口宽度分配三栏（窄窗预览 300，宽窗 360）。

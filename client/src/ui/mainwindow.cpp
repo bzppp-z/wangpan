@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLayoutItem>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
@@ -25,6 +26,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardItem>
@@ -44,6 +46,7 @@
 #include "transfer/transfermanager.h"
 #include "ui/previewpanel.h"
 #include "ui/theme.h"
+#include "ui/trashdialog.h"
 #include "ui/transferpanel.h"
 
 namespace {
@@ -126,6 +129,8 @@ MainWindow::MainWindow(ApiClient* api, QWidget* parent)
 
     connect(api_, &ApiClient::filesLoaded, this, &MainWindow::onFilesLoaded);
     connect(api_, &ApiClient::folderCreated, this, &MainWindow::onFolderCreated);
+    connect(api_, &ApiClient::renamed, this, &MainWindow::onRenamed);
+    connect(api_, &ApiClient::deleted, this, &MainWindow::onDeleted);
     connect(api_, &ApiClient::failed, this, &MainWindow::onFailed);
     connect(api_, &ApiClient::unauthorized, this, &MainWindow::onUnauthorized);
     connect(api_, &ApiClient::loggedOut, this, &MainWindow::signedOut);
@@ -313,6 +318,12 @@ QWidget* MainWindow::buildToolBar() {
     downloadButton_->setToolTip(QStringLiteral("下载选中的文件"));
     connect(downloadButton_, &QPushButton::clicked, this, &MainWindow::startDownload);
 
+    QPushButton* trashButton = new QPushButton(QStringLiteral("回收站"), bar);
+    trashButton->setFixedHeight(32);
+    trashButton->setCursor(Qt::PointingHandCursor);
+    trashButton->setStyleSheet(secondaryStyle);
+    connect(trashButton, &QPushButton::clicked, this, &MainWindow::openTrash);
+
     QPushButton* refreshButton = new QPushButton(QStringLiteral("刷新"), bar);
     refreshButton->setFixedHeight(32);
     refreshButton->setCursor(Qt::PointingHandCursor);
@@ -328,6 +339,7 @@ QWidget* MainWindow::buildToolBar() {
     layout->addWidget(newFolder);
     layout->addWidget(upload);
     layout->addWidget(downloadButton_);
+    layout->addWidget(trashButton);
     layout->addWidget(refreshButton);
     layout->addStretch();
     layout->addWidget(logoutButton);
@@ -359,7 +371,7 @@ QWidget* MainWindow::buildFilePanel() {
     table_->setObjectName(QStringLiteral("fileTable"));
     table_->setModel(fileModel_);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table_->setSelectionMode(QAbstractItemView::SingleSelection);
+    table_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->verticalHeader()->hide();
     table_->verticalHeader()->setDefaultSectionSize(32);
@@ -381,6 +393,15 @@ QWidget* MainWindow::buildFilePanel() {
     connect(table_, &QTableView::doubleClicked, this, &MainWindow::onRowActivated);
     connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             &MainWindow::updateDownloadAction);
+
+    // F2 仅单选可用；Delete 支持多选，逐个软删除。
+    QShortcut* renameShortcut = new QShortcut(QKeySequence(Qt::Key_F2), table_);
+    renameShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(renameShortcut, &QShortcut::activated, this, &MainWindow::renameSelected);
+    QShortcut* deleteShortcut = new QShortcut(QKeySequence::Delete, table_);
+    deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
+
     table_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(table_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         const QModelIndex index = table_->indexAt(pos);
@@ -394,16 +415,29 @@ QWidget* MainWindow::buildFilePanel() {
         }
         const bool isFile = nameItem->data(Qt::UserRole + 1).toString() == QStringLiteral("file");
 
+        // 顺序固定：预览、下载、重命名、删除、回收站；文件夹行不出现前两项。
         QMenu menu(this);
         QAction* previewAction = menu.addAction(QStringLiteral("预览"));
-        previewAction->setEnabled(isFile);
         QAction* downloadAction = menu.addAction(QStringLiteral("下载"));
-        downloadAction->setEnabled(isFile);
+        menu.addSeparator();
+        QAction* renameAction = menu.addAction(QStringLiteral("重命名"));
+        QAction* deleteAction = menu.addAction(QStringLiteral("删除"));
+        menu.addSeparator();
+        QAction* trashAction = menu.addAction(QStringLiteral("回收站"));
+        previewAction->setVisible(isFile);
+        downloadAction->setVisible(isFile);
+
         QAction* chosen = menu.exec(table_->viewport()->mapToGlobal(pos));
         if (chosen == previewAction && isFile) {
             openPreview(nameItem);
         } else if (chosen == downloadAction && isFile) {
             startDownload();
+        } else if (chosen == renameAction) {
+            renameSelected();
+        } else if (chosen == deleteAction) {
+            deleteSelected();
+        } else if (chosen == trashAction) {
+            openTrash();
         }
     });
     layout->addWidget(table_, 1);
@@ -548,6 +582,7 @@ void MainWindow::onFilesLoaded(const QJsonArray& items, qint64 usedBytes, qint64
         nameItem->setData(QVariant::fromValue<qlonglong>(id), Qt::UserRole);
         nameItem->setData(kind, Qt::UserRole + 1);
         nameItem->setData(QVariant::fromValue<qlonglong>(size), Qt::UserRole + 2);
+        nameItem->setData(name, Qt::UserRole + 3);  // 原始名称，文件夹展示时带 📁 前缀
 
         QStandardItem* sizeItem = new QStandardItem(
             kind == QStringLiteral("folder") ? QStringLiteral("—") : formatSize(size));
@@ -570,6 +605,85 @@ void MainWindow::onFolderCreated(qint64 id, const QString& finalName) {
     api_->listFiles(currentId_);
 }
 
+QStandardItem* MainWindow::singleSelectedItem() const {
+    if (table_ == nullptr || table_->selectionModel() == nullptr) {
+        return nullptr;
+    }
+    const QModelIndexList rows = table_->selectionModel()->selectedRows();
+    if (rows.size() != 1) {
+        return nullptr;
+    }
+    return fileModel_->item(rows.first().row(), 0);
+}
+
+bool MainWindow::isAncestorOfCurrent(qint64 id) const {
+    for (QStandardItem* node = currentItem_; node != nullptr; node = node->parent()) {
+        if (node->data(Qt::UserRole).toLongLong() == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::renameSelected() {
+    QStandardItem* item = singleSelectedItem();
+    if (item == nullptr) {
+        return;
+    }
+    const QString currentName = item->data(Qt::UserRole + 3).toString();
+
+    QInputDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("重命名"));
+    dialog.setLabelText(QStringLiteral("新名称"));
+    dialog.setTextValue(currentName);
+    if (QLineEdit* edit = dialog.findChild<QLineEdit*>()) {
+        edit->selectAll();
+    }
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const QString name = dialog.textValue().trimmed();
+    if (name.isEmpty() || name == currentName) {
+        return;  // 空名或未变化不发请求
+    }
+    api_->renameFile(item->data(Qt::UserRole).toLongLong(), name);
+}
+
+void MainWindow::deleteSelected() {
+    if (table_ == nullptr || table_->selectionModel() == nullptr) {
+        return;
+    }
+    const QModelIndexList rows = table_->selectionModel()->selectedRows();
+    for (const QModelIndex& index : rows) {
+        QStandardItem* item = fileModel_->item(index.row(), 0);
+        if (item != nullptr) {
+            api_->deleteFile(item->data(Qt::UserRole).toLongLong());
+        }
+    }
+}
+
+void MainWindow::onRenamed(qint64 id, const QString& finalName) {
+    pendingSelectId_ = id;
+    showStatusMessage(QStringLiteral("已重命名为 %1").arg(finalName), false);
+    api_->listFiles(currentId_);
+}
+
+void MainWindow::onDeleted(qint64 id) {
+    if (isAncestorOfCurrent(id)) {
+        navigateTo(0);
+        return;
+    }
+    // 删除后立即刷新，当前目录清空时自动回到空态；配额不变（软删除）。
+    api_->listFiles(currentId_);
+}
+
+void MainWindow::openTrash() {
+    TrashDialog dialog(api_, this);
+    connect(&dialog, &TrashDialog::changed, this, &MainWindow::refresh);
+    dialog.exec();
+    refresh();  // 恢复/彻底删除可能改变当前目录与配额
+}
+
 void MainWindow::selectRowById(qint64 id) {
     for (int row = 0; row < fileModel_->rowCount(); ++row) {
         QStandardItem* item = fileModel_->item(row, 0);
@@ -582,6 +696,12 @@ void MainWindow::selectRowById(qint64 id) {
 }
 
 void MainWindow::onFailed(const QString& message) {
+    // 重命名 / 删除时条目可能已被其他地方移除，统一按"文件已被删除"提示并刷新。
+    if (message == QStringLiteral("文件不存在")) {
+        showStatusMessage(QStringLiteral("文件已被删除"), true);
+        api_->listFiles(currentId_);
+        return;
+    }
     showStatusMessage(message, true);
 }
 

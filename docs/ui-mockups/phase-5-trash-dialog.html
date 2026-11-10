@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网盘客户端 · 文件操作菜单与回收站草图（阶段 5）</title>
+<style>
+  :root{
+    --primary:#2D8CF0;
+    --text:#1F2329;
+    --text-muted:#86909C;
+    --border:#E5E6EB;
+    --border-light:#F2F3F5;
+    --success:#00B42A;
+    --danger:#F53F3F;
+    --error-text:#E64545;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:32px 16px 56px;
+    font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    background:#F2F4F7;color:var(--text);
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+  }
+  h1{font-size:15px;font-weight:600;margin:0 0 4px;}
+  .hint{font-size:12px;color:var(--text-muted);margin:0 0 10px;text-align:center;max-width:860px;line-height:1.7;}
+  .card{width:1100px;background:#fff;border-radius:8px;
+        box-shadow:0 8px 28px rgba(31,35,41,.12),0 2px 6px rgba(31,35,41,.05);overflow:hidden;}
+  .card-title{font-size:12px;color:var(--text-muted);padding:10px 16px;border-bottom:1px solid var(--border-light);}
+  .stage{min-height:520px;background:#F2F4F7;display:flex;align-items:center;justify-content:center;padding:24px;gap:28px;}
+  .note{font-size:12px;color:var(--text-muted);padding:10px 16px 14px;line-height:1.8;border-top:1px solid var(--border-light);}
+  .note b{color:var(--text);font-weight:600;}
+
+  /* ---------- 弹窗 ---------- */
+  .dialog{width:720px;height:480px;background:#fff;border-radius:8px;display:flex;flex-direction:column;
+          box-shadow:0 12px 32px rgba(31,35,41,.18),0 2px 8px rgba(31,35,41,.08);overflow:hidden;}
+  .dlg-title{height:48px;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid var(--border-light);}
+  .dlg-title b{font-size:14px;font-weight:600;}
+  .dlg-title .clear{margin-left:auto;font-size:13px;color:var(--danger);cursor:pointer;background:none;
+                    border:none;padding:4px 2px;}
+  .dlg-title .clear:disabled{color:#C9CDD4;cursor:default;}
+  table.trash{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;}
+  table.trash th{background:#FAFAFA;color:var(--text-muted);font-size:12px;font-weight:400;text-align:left;
+      padding:8px 12px;border-bottom:1px solid var(--border);}
+  table.trash td{padding:0 12px;height:36px;border-bottom:1px solid var(--border-light);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  table.trash tr.on td{background:#E8F3FF;}
+  .dlg-body{flex:1;overflow:hidden;}
+  .dlg-empty{flex:1;display:flex;align-items:center;justify-content:center;
+             font-size:13px;color:var(--text-muted);}
+  .dlg-foot{height:56px;display:flex;align-items:center;gap:8px;padding:0 20px;
+            border-top:1px solid var(--border-light);}
+  .btn{height:32px;border-radius:4px;font-size:13px;padding:0 18px;display:inline-flex;align-items:center;
+       border:1px solid var(--border);color:var(--text);background:#fff;cursor:pointer;}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .btn.danger{background:#fff;border-color:var(--danger);color:var(--danger);}
+  .btn:disabled{color:#C9CDD4;border-color:#E5E6EB;background:#fff;cursor:default;}
+  .dlg-foot .hintline{margin-left:auto;font-size:12px;color:var(--text-muted);}
+
+  /* ---------- 右键菜单 ---------- */
+  .menu-wrap{display:flex;align-items:center;gap:18px;}
+  .menu{width:150px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 0;
+        box-shadow:0 6px 18px rgba(31,35,41,.14);font-size:13px;}
+  .menu div{height:30px;display:flex;align-items:center;padding:0 14px;cursor:pointer;}
+  .menu div:hover{background:#F2F7FF;color:var(--primary);}
+  .menu div.hidden{display:none;}
+  .menu div.sep{height:1px;padding:0;margin:4px 0;background:var(--border-light);cursor:default;}
+  .menu div.sep:hover{background:var(--border-light);}
+  .rowlabel{font-size:12px;color:var(--text-muted);margin-bottom:8px;}
+
+  /* ---------- 确认框 ---------- */
+  .confirm{width:360px;background:#fff;border-radius:8px;padding:20px;
+           box-shadow:0 12px 32px rgba(31,35,41,.18),0 2px 8px rgba(31,35,41,.08);}
+  .confirm .ct{font-size:14px;font-weight:600;margin-bottom:10px;}
+  .confirm .cb{font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:18px;}
+  .confirm .cf{display:flex;justify-content:flex-end;gap:8px;}
+  .confirm .cf .btn{height:30px;padding:0 16px;}
+  .confirm .cf .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff;}
+</style>
+</head>
+<body>
+  <h1>阶段 5 · 文件操作右键菜单与回收站</h1>
+  <p class="hint">
+    回收站为 720×480 模态窗，右上为红色文字按钮"清空回收站"，四列固定宽度，底部"恢复""彻底删除"；
+    彻底删除与清空都先弹确认框。文件行右键菜单固定顺序"预览、下载、重命名、删除、回收站"，文件夹行隐藏前两项。
+  </p>
+
+  <div class="card">
+    <div class="card-title">状态 1 · 回收站有内容（720×480 模态）</div>
+    <div class="stage">
+      <div class="dialog">
+        <div class="dlg-title">
+          <b>回收站</b>
+          <button class="clear">清空回收站</button>
+        </div>
+        <div class="dlg-body">
+          <table class="trash">
+            <colgroup>
+              <col style="width:auto">
+              <col style="width:100px">
+              <col style="width:160px">
+              <col style="width:90px">
+            </colgroup>
+            <tr>
+              <th>名称</th><th>大小</th><th>删除时间</th><th>剩余天数</th>
+            </tr>
+            <tr class="on">
+              <td>📁 文档</td><td>—</td><td>2026-11-09 21:04</td><td>29 天后彻底删除</td>
+            </tr>
+            <tr>
+              <td>2026-11-08.zip</td><td>128.0 MB</td><td>2026-11-08 09:12</td><td>28 天后彻底删除</td>
+            </tr>
+            <tr>
+              <td>说明.txt</td><td>2.1 KB</td><td>2026-11-07 18:30</td><td>27 天后彻底删除</td>
+            </tr>
+          </table>
+        </div>
+        <div class="dlg-foot">
+          <button class="btn primary">恢复</button>
+          <button class="btn danger">彻底删除</button>
+          <span class="hintline">双击一行可直接恢复</span>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      列宽：名称拉伸；大小 100；删除时间 160（<b>yyyy-MM-dd HH:mm</b>）；剩余天数 90（"X 天后彻底删除"）。
+      选中行用 <b>#E8F3FF</b> 底色；恢复成功后刷新本窗口与主列表，条目冲突时按 R2 自动改名。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">状态 2 · 回收站为空（两个按钮与"清空回收站"全部禁用）</div>
+    <div class="stage">
+      <div class="dialog">
+        <div class="dlg-title">
+          <b>回收站</b>
+          <button class="clear" disabled>清空回收站</button>
+        </div>
+        <div class="dlg-body">
+          <div class="dlg-empty">回收站是空的</div>
+        </div>
+        <div class="dlg-foot">
+          <button class="btn" disabled>恢复</button>
+          <button class="btn" disabled>彻底删除</button>
+        </div>
+      </div>
+    </div>
+    <div class="note">空态文案居中 <b>#86909C</b>；列表为空时底部两个按钮与右上"清空回收站"统一置灰。</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">状态 3 · 文件行右键菜单（预览、下载、重命名、删除、回收站）</div>
+    <div class="stage">
+      <div class="menu-wrap">
+        <div>
+          <div class="rowlabel">文件行（report.pdf）</div>
+          <div class="menu">
+            <div>预览</div>
+            <div>下载</div>
+            <div class="sep"></div>
+            <div>重命名</div>
+            <div>删除</div>
+            <div class="sep"></div>
+            <div>回收站</div>
+          </div>
+        </div>
+        <div>
+          <div class="rowlabel">文件夹行（课程资料）</div>
+          <div class="menu">
+            <div class="hidden">预览</div>
+            <div class="hidden">下载</div>
+            <div>重命名</div>
+            <div>删除</div>
+            <div class="sep"></div>
+            <div>回收站</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      顺序固定，分隔线只用于分组；文件夹行不显示"预览""下载"（不是置灰，而是整项不出现）。
+      <b>F2</b> 仅单选可用；<b>Delete</b> 支持多选，逐个调用删除接口后刷新当前目录与配额。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">状态 4 · 彻底删除确认框（清空回收站复用同一文案）</div>
+    <div class="stage">
+      <div class="confirm">
+        <div class="ct">彻底删除</div>
+        <div class="cb">彻底删除后不可恢复，确定继续？</div>
+        <div class="cf">
+          <button class="btn">取消</button>
+          <button class="btn danger">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      软删除（移入回收站）不做确认；只有"彻底删除"与"清空回收站"弹 <b>QMessageBox::warning</b>，默认按钮为"取消"。
+    </div>
+  </div>
+</body>
+</html>

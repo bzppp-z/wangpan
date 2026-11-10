@@ -168,6 +168,50 @@ void ApiClient::createFolder(qlonglong parentId, const QString& name) {
              });
 }
 
+void ApiClient::renameFile(qlonglong id, const QString& name) {
+    QJsonObject payload;
+    payload["name"] = name;
+    const QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+    sendCustom(makeRequest(baseUrl_ + QStringLiteral("/api/files/%1").arg(id)),
+               QByteArrayLiteral("PATCH"), body, true, [this](const QJsonObject& obj) {
+                   const qint64 fileId = static_cast<qint64>(obj.value("id").toDouble());
+                   emit renamed(fileId, obj.value("name").toString());
+               });
+}
+
+void ApiClient::deleteFile(qlonglong id) {
+    sendCustom(makeRequest(baseUrl_ + QStringLiteral("/api/files/%1").arg(id)),
+               QByteArrayLiteral("DELETE"), QByteArray(), true, [this, id](const QJsonObject&) {
+                   emit deleted(id);
+               });
+}
+
+void ApiClient::listTrash() {
+    sendGet(makeRequest(baseUrl_ + QStringLiteral("/api/trash")), true,
+            [this](const QJsonObject& obj) { emit trashLoaded(obj.value("items").toArray()); });
+}
+
+void ApiClient::restoreTrash(qlonglong id) {
+    sendPost(makeRequest(baseUrl_ + QStringLiteral("/api/trash/%1/restore").arg(id)),
+             QByteArray(), true, [this](const QJsonObject& obj) {
+                 const qint64 fileId = static_cast<qint64>(obj.value("id").toDouble());
+                 const qint64 parentId = static_cast<qint64>(obj.value("parent_id").toDouble());
+                 emit trashRestored(fileId, obj.value("name").toString(), parentId);
+             });
+}
+
+void ApiClient::purgeTrash(qlonglong id) {
+    sendCustom(makeRequest(baseUrl_ + QStringLiteral("/api/trash/%1").arg(id)),
+               QByteArrayLiteral("DELETE"), QByteArray(), true, [this, id](const QJsonObject&) {
+                   emit trashPurged(id);
+               });
+}
+
+void ApiClient::clearTrash() {
+    sendCustom(makeRequest(baseUrl_ + QStringLiteral("/api/trash")), QByteArrayLiteral("DELETE"),
+               QByteArray(), true, [this](const QJsonObject&) { emit trashCleared(); });
+}
+
 QNetworkRequest ApiClient::makeRequest(const QString& path) const {
     QNetworkRequest req{QUrl(path)};
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
@@ -192,6 +236,18 @@ void ApiClient::sendPost(const QNetworkRequest& req, const QByteArray& body, boo
                          const std::function<void(const QJsonObject&)>& onSuccess) {
     // 显式传 body（甚至空体），保证请求带 Content-Length：cpp-httplib 等待无长度 POST 会卡到超时。
     QNetworkReply* reply = nam_->post(req, body);
+    QTimer* timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, &QNetworkReply::abort);
+    timeout->start(kTimeoutMs);
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, sessionEndpoint, onSuccess]() { finish(reply, sessionEndpoint, onSuccess); });
+}
+
+void ApiClient::sendCustom(const QNetworkRequest& req, const QByteArray& verb,
+                           const QByteArray& body, bool sessionEndpoint,
+                           const std::function<void(const QJsonObject&)>& onSuccess) {
+    QNetworkReply* reply = nam_->sendCustomRequest(req, verb, body);
     QTimer* timeout = new QTimer(reply);
     timeout->setSingleShot(true);
     connect(timeout, &QTimer::timeout, reply, &QNetworkReply::abort);

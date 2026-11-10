@@ -1,0 +1,26 @@
+#include "ui/theme.h"
+
+namespace theme {
+
+const QColor kPrimary(0x2D, 0x8C, 0xF0);
+const QColor kPrimaryHover(0x1E, 0x6F, 0xD9);
+const QColor kPrimaryPressed(0x1A, 0x5F, 0xB4);
+const QColor kPrimaryDisabled(0xA0, 0xCF, 0xFF);
+const QColor kText(0x1F, 0x23, 0x29);
+const QColor kTextMuted(0x86, 0x90, 0x9C);
+const QColor kBorder(0xD9, 0xD9, 0xD9);
+const QColor kErrorText(0xE6, 0x45, 0x45);
+const QColor kErrorBg(0xFF, 0xF1, 0xF0);
+const QColor kBrandFrom(0xF5, 0xF8, 0xFF);
+const QColor kBrandTo(0xEA, 0xF2, 0xFF);
+
+const int kWindowW = 760;
+const int kWindowH = 440;
+const int kBrandW = 320;
+const int kInputH = 40;
+const int kInputW = 360;
+const int kMargin = 40;
+
+const char* const kFontFamily = "Microsoft YaHei";
+
+}  // namespace theme

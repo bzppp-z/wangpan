@@ -141,13 +141,13 @@ mingw32-make -j4
 
 **步骤：**
 
-- [ ] 写 `theme.h/.cpp`：集中定义颜色常量（`kPrimary #2D8CF0`、`kPrimaryHover #1E6FD9`、`kPrimaryDisabled #A0CFFF`、`kText #1F2329`、`kTextMuted #86909C`、`kBorder #D9D9D9`、`kErrorText #E64545`、`kErrorBg #FFF1F0`、`kBrandFrom #F5F8FF`、`kBrandTo #EAF2FF`）与尺寸常量（`kWindowW 760`、`kWindowH 440`、`kBrandW 320`、`kInputH 40`、`kInputW 360`、`kMargin 40`），供登录窗与主窗口复用。
-- [ ] 左侧品牌区用 `QWidget` 重写 `paintEvent` 画垂直渐变（`QLinearGradient`），文字用两个 `QLabel`；不加载任何外部图片。
-- [ ] 右侧按契约搭建：页签（两个 `QPushButton` 做扁平样式，"扫码登录"禁用并设 `setToolTip("暂未开放")`）、`QLineEdit` 用户名与密码（密码框 `setEchoMode(QLineEdit::Password)`）、"显示/隐藏"按钮（点击在 `Password` 与 `Normal` 之间切换并同步按钮文字）、错误条 `QLabel`（默认 `hide()`）、主按钮、底部链接行。
-- [ ] 实现状态机：`submit()` 时禁用输入与按钮、按钮文字改"登录中…"；`failed` 时恢复并显示错误条；`loginSucceeded` 时保存用户名与地址到 `QSettings`，发射 `loggedIn(token, userId)` 供 `main.cpp` 打开主窗口。
-- [ ] 注册态切换：隐藏页签、显示确认密码、按钮文字"注 册"、底部"返回登录"；两次密码不一致时本地提示"两次输入的密码不一致"，不发请求。
-- [ ] "设置服务器"链接：`QInputDialog::getText` 输入基地址，校验以 `http://` 或 `https://` 开头，非法时错误条提示"地址必须以 http:// 或 https:// 开头"。
-- [ ] 编译运行，手工验证：
+- [x] 写 `theme.h/.cpp`：集中定义颜色常量（`kPrimary #2D8CF0`、`kPrimaryHover #1E6FD9`、`kPrimaryDisabled #A0CFFF`、`kText #1F2329`、`kTextMuted #86909C`、`kBorder #D9D9D9`、`kErrorText #E64545`、`kErrorBg #FFF1F0`、`kBrandFrom #F5F8FF`、`kBrandTo #EAF2FF`）与尺寸常量（`kWindowW 760`、`kWindowH 440`、`kBrandW 320`、`kInputH 40`、`kInputW 360`、`kMargin 40`），供登录窗与主窗口复用。
+- [x] 左侧品牌区用 `QWidget` 重写 `paintEvent` 画垂直渐变（`QLinearGradient`），文字用两个 `QLabel`；不加载任何外部图片。
+- [x] 右侧按契约搭建：页签（两个 `QPushButton` 做扁平样式，"扫码登录"禁用并设 `setToolTip("暂未开放")`）、`QLineEdit` 用户名与密码（密码框 `setEchoMode(QLineEdit::Password)`）、"显示/隐藏"按钮（点击在 `Password` 与 `Normal` 之间切换并同步按钮文字）、错误条 `QLabel`（默认 `hide()`）、主按钮、底部链接行。
+- [x] 实现状态机：`submit()` 时禁用输入与按钮、按钮文字改"登录中…"；`failed` 时恢复并显示错误条；`loginSucceeded` 时保存用户名与地址到 `QSettings`，发射 `loggedIn(token, userId)` 供 `main.cpp` 打开主窗口。
+- [x] 注册态切换：隐藏页签、显示确认密码、按钮文字"注 册"、底部"返回登录"；两次密码不一致时本地提示"两次输入的密码不一致"，不发请求。
+- [x] "设置服务器"链接：`QInputDialog::getText` 输入基地址，校验以 `http://` 或 `https://` 开头，非法时错误条提示"地址必须以 http:// 或 https:// 开头"。
+- [x] 编译运行，手工验证：
   - 启动后窗口居中、760×440；
   - 输入错误密码 → 错误条显示"账号或密码错误"；
   - 服务器地址改为 `http://127.0.0.1:9999` → 显示"无法连接服务器，请检查地址"；

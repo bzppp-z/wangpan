@@ -15,6 +15,7 @@ set(APP_SOURCES
   src/db/files.cpp
   src/util/crypto.cpp
   src/api/auth.cpp
+  src/api/files.cpp
 )
 
 add_executable(wangpan_server ${APP_SOURCES})

@@ -17,4 +17,7 @@ bool find_user_by_name(const std::string& username, long long& out_id, std::stri
 // 该用户所有 kind='file' 记录的 size 之和（含回收站内文件，符合 PRD R9）。
 long long used_bytes(long long user_id);
 
+// 该用户的配额（字节）；用户不存在返回 0。
+long long quota_bytes_of(long long user_id);
+
 }  // namespace db

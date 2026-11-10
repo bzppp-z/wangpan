@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include "api/auth.h"
+#include "api/files.h"
 #include "api/respond.h"
 #include "config.h"
 #include "db/db.h"
@@ -102,6 +103,7 @@ int main(int argc, char** argv) {
     });
 
     auth::register_routes(svr, cfg.quota_bytes);
+    api_files::register_routes(svr);
 
     log_info("监听地址 http://" + cfg.bind_addr + ":" + std::to_string(cfg.port));
     log_info("数据目录 " + cfg.data_dir);

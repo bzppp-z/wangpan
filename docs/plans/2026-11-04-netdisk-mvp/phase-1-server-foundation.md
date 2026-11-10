@@ -356,7 +356,7 @@ check "register token 64 位" 64 "${#TOKEN}"
 
 **步骤：**
 
-- [ ] 在 `scripts/smoke.sh` 追加用例（先失败）：
+- [x] 在 `scripts/smoke.sh` 追加用例（先失败）：
 
 ```bash
 noauth=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/files?parent_id=0")
@@ -376,12 +376,14 @@ check "list root 200" 200 "$list"
 check_grep "list contains folder" /tmp/wp_list.json '"name":"文档"'
 ```
 
-- [ ] 实现 `GET /api/files`：鉴权 → 校验 parent 归属 → 查询子项 → 计算 `used_bytes` 与 `quota_bytes` → 200。
-- [ ] 实现 `POST /api/folders`：鉴权 → 校验名称与 parent → 按 R2 生成唯一名称并插入（`kind='folder'`，`size=0`）→ 201 返回 `{"id","name"}`（`name` 为最终名称）。
-- [ ] 编译、重启、重跑 `scripts/smoke.sh`
-  - 预期：新增 4 个断言全部 PASS。
+- [x] 实现 `GET /api/files`：鉴权 → 校验 parent 归属 → 查询子项 → 计算 `used_bytes` 与 `quota_bytes` → 200。
+- [x] 实现 `POST /api/folders`：鉴权 → 校验名称与 parent → 按 R2 生成唯一名称并插入（`kind='folder'`，`size=0`）→ 201 返回 `{"id","name"}`（`name` 为最终名称）。
+- [x] 编译、重启、重跑 `scripts/smoke.sh`
+  - 预期：新增 10 个断言全部 PASS。
 
 **安全 / 边界说明：** 所有查询都带 `owner_id` 条件（PRD R0）；`parent_id` 来自客户端但只作为数据库主键使用，不参与任何路径拼接（PRD 结论）。
+
+**实测：** 冒烟累计 23 条断言全 PASS；重名第二次创建返回 `文档 (1)`，说明 R2 自动改名在 HTTP 层生效。
 
 ---
 

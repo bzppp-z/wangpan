@@ -67,5 +67,37 @@ Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   -d "{\"username\":\"carol\",\"password\":\"$BIG\"}" "$BASE/api/register")
 check "请求体过大 413" 413 "$Code"
 
+# ===== 目录：列表 / 新建文件夹 =====
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/api/files?parent_id=0")
+check "无 token 列目录 401" 401 "$Code"
+
+Code=$(curl -s -o /tmp/wp_mk.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"文档"}' "$BASE/api/folders")
+check "新建文件夹 201" 201 "$Code"
+check_grep "新建返回名称" /tmp/wp_mk.json '"name":"文档"'
+FOLDER_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/wp_mk.json)
+
+Code=$(curl -s -o /tmp/wp_mk2.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"文档"}' "$BASE/api/folders")
+check "重名自动改名 201" 201 "$Code"
+check_grep "重名追加 (1)" /tmp/wp_mk2.json '"name":"文档 (1)"'
+
+Code=$(curl -s -o /tmp/wp_list.json -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/api/files?parent_id=0")
+check "列根目录 200" 200 "$Code"
+check_grep "列表含文档" /tmp/wp_list.json '"name":"文档"'
+check_grep "列表含配额" /tmp/wp_list.json '"quota_bytes":5368709120'
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/api/files?parent_id=999999")
+check "不存在的目录 404" 404 "$Code"
+
+Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":0,"name":"a/b"}' "$BASE/api/folders")
+check "非法名称 400" 400 "$Code"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

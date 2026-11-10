@@ -101,4 +101,24 @@ long long used_bytes(long long user_id) {
     return total;
 }
 
+long long quota_bytes_of(long long user_id) {
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        return 0;
+    }
+
+    const char* sql = "SELECT quota_bytes FROM users WHERE id = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return 0;
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+    long long quota = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        quota = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return quota;
+}
+
 }  // namespace db

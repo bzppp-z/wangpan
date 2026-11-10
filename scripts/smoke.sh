@@ -262,5 +262,45 @@ Code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/api/upload/$MS
   -H "Authorization: Bearer $TOKEN")
 check "校验失败后会话已清理 404" 404 "$Code"
 
+# ===== 下载：整文件 / Range 续传 / 越权 =====
+fid=$(sed -n 's/.*"file_id":\([0-9]*\).*/\1/p' /tmp/wp_done.json)
+FULL=$(curl -s -o /tmp/wp_dl_full.bin -D /tmp/wp_dl_full_hdr.txt -w '%{http_code}' --max-time 20 \
+  "$BASE/api/files/$fid/content" -H "Authorization: Bearer $TOKEN")
+check "download 200" 200 "$FULL"
+check "download size" 5242880 "$(stat -c %s /tmp/wp_dl_full.bin)"
+check "download sha 一致" "$SHA" "$(sha256sum /tmp/wp_dl_full.bin | cut -d' ' -f1)"
+check_grep "download Accept-Ranges" /tmp/wp_dl_full_hdr.txt 'Accept-Ranges: bytes'
+check_grep "download ETag" /tmp/wp_dl_full_hdr.txt "ETag: \"$SHA\""
+check_grep "download Content-Disposition" /tmp/wp_dl_full_hdr.txt "filename\*=UTF-8''big.bin"
+
+PART=$(curl -s -o /tmp/wp_dl_part.bin -D /tmp/wp_dl_part_hdr.txt -w '%{http_code}' --max-time 20 \
+  -H "Authorization: Bearer $TOKEN" -H 'Range: bytes=1048576-' "$BASE/api/files/$fid/content")
+check "range 206" 206 "$PART"
+check_grep "content-range" /tmp/wp_dl_part_hdr.txt 'Content-Range: bytes 1048576-5242879/5242880'
+check "range body size" 4194304 "$(stat -c %s /tmp/wp_dl_part.bin)"
+
+# 后端返回 206 的片段必须与整文件同偏移一致
+dd if=/tmp/wp_dl_full.bin of=/tmp/wp_dl_tail.bin bs=1M skip=1 status=none
+check "range 内容一致" "$(sha256sum /tmp/wp_dl_tail.bin | cut -d' ' -f1)" \
+  "$(sha256sum /tmp/wp_dl_part.bin | cut -d' ' -f1)"
+
+# 终点越界按末尾截断：bytes=5000000-9000000 → 5000000-5242879
+OOB=$(curl -s -o /tmp/wp_dl_oob.bin -D /tmp/wp_dl_oob_hdr.txt -w '%{http_code}' --max-time 20 \
+  -H "Authorization: Bearer $TOKEN" -H 'Range: bytes=5000000-9000000' "$BASE/api/files/$fid/content")
+check "越界终点 206" 206 "$OOB"
+check "越界终点截断长度" 242880 "$(stat -c %s /tmp/wp_dl_oob.bin)"
+
+check "bad range 416" 416 "$(curl -s -o /tmp/wp_dl_416.json -D /tmp/wp_dl_416_hdr.txt \
+  -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $TOKEN" \
+  -H 'Range: bytes=5242880-' "$BASE/api/files/$fid/content")"
+check_grep "416 带 Content-Range" /tmp/wp_dl_416_hdr.txt 'Content-Range: bytes \*/5242880'
+
+check "cross account download 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $BTOKEN" "$BASE/api/files/$fid/content")"
+check "不存在文件 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/api/files/999999/content")"
+check "无 token 下载 401" 401 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+  "$BASE/api/files/$fid/content")"
+
 echo "通过 $pass 失败 $fail"
 [ "$fail" -eq 0 ]

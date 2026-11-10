@@ -100,6 +100,37 @@ bool list_children(long long owner_id, long long parent_id, std::vector<Row>& ou
     return true;
 }
 
+bool find_file(long long owner_id, long long file_id, Row& out) {
+    out = Row();
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        return false;
+    }
+
+    const char* sql =
+        "SELECT id, parent_id, name, kind, size, updated_at, blob_id FROM files"
+        " WHERE id = ? AND owner_id = ? AND kind = 'file' AND deleted_at IS NULL";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_int64(stmt, 1, file_id);
+    sqlite3_bind_int64(stmt, 2, owner_id);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+        out.id = sqlite3_column_int64(stmt, 0);
+        out.parent_id = sqlite3_column_int64(stmt, 1);
+        out.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        out.kind = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        out.size = sqlite3_column_int64(stmt, 4);
+        out.updated_at = sqlite3_column_int64(stmt, 5);
+        out.blob_id = sqlite3_column_int64(stmt, 6);
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 std::string unique_name(long long owner_id, long long parent_id, const std::string& desired_name) {
     for (int i = 0; i < 100; ++i) {
         const std::string candidate = make_candidate(desired_name, i);

@@ -6,6 +6,15 @@
 namespace db {
 namespace blobs {
 
+struct Info {
+    long long id = 0;
+    long long size = 0;
+    std::string sha256;
+};
+
+// 按 id 取已有 blob；不存在返回 false。
+bool find_by_id(long long blob_id, Info& out);
+
 // 按 sha256 取已有 blob；不存在则插入（refcount = 0）。
 // 并发插入同一 sha 时依赖唯一索引，冲突后回读已有行。
 bool get_or_create(const std::string& sha256, long long size, long long& out_id, std::string& err);

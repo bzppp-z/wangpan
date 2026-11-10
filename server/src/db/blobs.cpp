@@ -5,6 +5,29 @@
 namespace db {
 namespace blobs {
 
+bool find_by_id(long long blob_id, Info& out) {
+    out = Info();
+    sqlite3* h = handle();
+    if (h == nullptr) {
+        return false;
+    }
+    const char* sql = "SELECT id, size, sha256 FROM blobs WHERE id = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(h, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_int64(stmt, 1, blob_id);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+        out.id = sqlite3_column_int64(stmt, 0);
+        out.size = sqlite3_column_int64(stmt, 1);
+        out.sha256 = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 bool get_or_create(const std::string& sha256, long long size, long long& out_id, std::string& err) {
     err.clear();
     out_id = 0;

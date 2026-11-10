@@ -19,6 +19,7 @@ set(APP_SOURCES
   src/api/auth.cpp
   src/api/files.cpp
   src/api/upload.cpp
+  src/api/download.cpp
 )
 
 add_executable(wangpan_server ${APP_SOURCES})
@@ -50,3 +51,7 @@ add_executable(test_instant tests/test_instant.cpp
 target_include_directories(test_instant PRIVATE src third_party)
 target_link_libraries(test_instant PRIVATE SQLite::SQLite3 Threads::Threads)
 add_test(NAME instant COMMAND test_instant)
+
+add_executable(test_range tests/test_range.cpp)
+target_include_directories(test_range PRIVATE src third_party)
+add_test(NAME range COMMAND test_range)

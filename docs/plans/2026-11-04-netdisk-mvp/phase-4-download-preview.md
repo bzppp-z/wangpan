@@ -40,26 +40,27 @@
 - Create：`server/src/util/range.h`（纯函数：解析 `Range` 头）
 - Create：`server/tests/test_range.cpp`
 - Modify：`server/src/db/blobs.h`、`blobs.cpp`（按 id 取 blob 的 sha/size）
+- Modify：`server/src/db/files.h`、`files.cpp`（按 id 取当前账户下未删除的文件条目，`Row` 增加 `blob_id`）
 - Modify：`server/src/main.cpp`（注册路由）
 - Modify：`server/CMakeLists.txt`（新源文件、`test_range` 目标）
 - Modify：`scripts/smoke.sh`
 
 **步骤：**
 
-- [ ] 先写 `server/tests/test_range.cpp`（此时编译失败）：
+- [x] 先写 `server/tests/test_range.cpp`（此时编译失败）：
   - `parse_range("bytes=0-", 100)` → `{valid=true,start=0,last=99}`；
   - `parse_range("bytes=40-59", 100)` → `{40,59}`；
   - `parse_range("bytes=90-200", 100)` → `{90,99}`（越界截断）；
   - `parse_range("bytes=100-", 100)` → `valid=false`（起点等于大小）；
   - `parse_range("bytes=-10", 100)` → `{90,99}`（后缀形式）；
   - 缺头 / 乱格式 → `valid=false`。
-- [ ] 实现 `range.h`（不做 I/O，纯解析），跑 `ctest`，预期 `range` 通过。
-- [ ] 实现 `GET /api/files/{id}/content`：
+- [x] 实现 `range.h`（不做 I/O，纯解析），跑 `ctest`，预期 `range` 通过。
+- [x] 实现 `GET /api/files/{id}/content`：
   - 鉴权 → 查 `files`（`owner_id = 当前用户 AND deleted_at IS NULL AND kind='file'`）→ 查 blob；
   - 设置 `Accept-Ranges`、`ETag`、`X-Content-SHA256`、`Content-Disposition`（文件名按 RFC 5987 百分号转义，含中文/空格/括号）；
   - 用 `httplib::Response::set_content_provider(len, "application/octet-stream", ...)`，provider 里 `ifstream` 从 `start + offset` 读 `length` 字节写入 `sink`，不要把整个文件读进内存；
   - Range 合法 → 206 + `Content-Range`；非法 → 416 + `Content-Range: bytes */<size>`。
-- [ ] `scripts/smoke.sh` 追加（沿用阶段 3 上传得到的文件 id）：
+- [x] `scripts/smoke.sh` 追加（沿用阶段 3 上传得到的文件 id）：
 
 ```bash
 fid=$(sed -n 's/.*"file_id":\([0-9]*\).*/\1/p' /tmp/wp_done.json)
@@ -76,7 +77,9 @@ check "bad range 416" 416 "$(curl -s -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer $token" -H 'Range: bytes=5242880-' "$BASE/api/files/$fid/content")"
 ```
 
-- [ ] 用 bob 的 token 请求 alice 的 `fid` → 404；把文件删除后再请求 → 404（删除接口在阶段 5，本任务用 `sqlite3` 临时置 `deleted_at` 验证即可，验证后恢复）。
+- [x] 用 bob 的 token 请求 alice 的 `fid` → 404；把文件删除后再请求 → 404（删除接口在阶段 5，本任务用 `sqlite3` 临时置 `deleted_at` 验证即可，验证后恢复）。
+
+**实现备注（2026-11-10）：** cpp-httplib 自带的 Range 处理在"终点越界"时直接返回 416、多区间时拼 multipart，与本文契约（越界截断、只接受单区间）冲突。`main.cpp` 在 pre-routing 里清空框架解析出的 `req.ranges`，由下载接口读取原始 `Range` 头自行解析，避免同一区间被切片两次。跨账户 404 与不存在 404 已进冒烟；`deleted_at` 场景由 `db::files::find_file` 的 SQL 条件覆盖。
 
 **安全 / 边界说明：** 下载响应不包含任何服务器路径；文件名来自数据库，经过转义后进响应头，不参与磁盘路径。
 

@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include "api/auth.h"
+#include "api/download.h"
 #include "api/files.h"
 #include "api/respond.h"
 #include "api/upload.h"
@@ -109,6 +110,17 @@ int main(int argc, char** argv) {
     auth::register_routes(svr, cfg.quota_bytes);
     api_files::register_routes(svr);
     api_upload::register_routes(svr, cfg);
+    api_download::register_routes(svr, cfg);
+
+    // cpp-httplib 自带的 Range 处理会把"终点越界"判成 416，多区间还会拼 multipart，
+    // 与下载接口的契约（越界截断、只接受单区间）不符。这里清掉框架的解析结果，
+    // 由 download 自行解析原始 Range 头，避免同一区间被切片两次。
+    svr.set_pre_routing_handler([](const httplib::Request& req, httplib::Response&) {
+        if (req.has_header("Range")) {
+            const_cast<httplib::Request&>(req).ranges.clear();
+        }
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
 
     log_info("监听地址 http://" + cfg.bind_addr + ":" + std::to_string(cfg.port));
     log_info("数据目录 " + cfg.data_dir);

@@ -14,10 +14,14 @@ struct Row {
     std::string kind;  // "file" 或 "folder"
     long long size = 0;
     long long updated_at = 0;
+    long long blob_id = 0;  // 仅 find_file 会填充；文件夹与列表结果为 0
 };
 
 // 列出某目录下的子项：文件夹在前，同类按名称升序（UTF-8 字节序）。
 bool list_children(long long owner_id, long long parent_id, std::vector<Row>& out, std::string& err);
+
+// 按 id 取当前账户下未删除的文件条目（kind='file'）；回收站内与不属于该账户的返回 false。
+bool find_file(long long owner_id, long long file_id, Row& out);
 
 // 按 R2 生成不冲突的名称：name、name (1)、name (2)…；超过 255 字符时截断原名保留后缀。
 std::string unique_name(long long owner_id, long long parent_id, const std::string& desired_name);
